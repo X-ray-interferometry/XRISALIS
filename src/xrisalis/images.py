@@ -1,7 +1,13 @@
 from PIL import Image
+import gc
 import numpy as np
 import scipy.constants as spc
 import pandas as pd
+from astropy.io import fits
+from astropy.wcs import WCS
+
+# for testing
+import matplotlib.pyplot as plt
 
 
 class image:
@@ -106,7 +112,7 @@ def double_point_source(size, alpha, beta, energy, spectrum=None):
 
     elif energy is None:
         # define either spectrum or energy
-        raise ValueError("ERROR: define either spectrum or energy")
+        raise Exception("ERROR: define either spectrum or energy")
 
     for i in range(0, size):
         source = np.random.randint(0, 2)
@@ -146,7 +152,7 @@ def m_point_sources(size, m, alpha, beta, energy, spectrum=None):
 
     elif energy is None:
         # define either spectrum or energy
-        raise ValueError("ERROR: define either spectrum or energy")
+        raise Exception("ERROR: define either spectrum or energy")
 
     for i in range(0, size):
         source = np.random.randint(0, m)
@@ -185,7 +191,7 @@ def point_source_multichromatic_range(size, alpha, beta, energy, spectrum=None):
 
     elif energy is None:
         # define either spectrum or energy
-        raise ValueError("ERROR: define either spectrum or energy")
+        raise Exception("ERROR: define either spectrum or energy")
 
     for i in range(0, size):
         im.energies[i] = (
@@ -210,6 +216,8 @@ def point_source_multichromatic_gauss(size, alpha, beta, energy, energy_spread):
     energy_spread (float) = spread in energy of photons to generate (KeV)\n
     """
     im = image(size)
+
+    spectrum = None
 
     im.energies = np.random.normal(energy, energy_spread, size) * spc.eV * 1e3
     for i in range(0, size):
@@ -249,7 +257,7 @@ def disc(size, alpha, beta, energy, radius, energy_spread=0.0, spectrum=None):
 
     elif energy is None:
         # define either spectrum or energy
-        raise ValueError("ERROR: define either spectrum or energy")
+        raise Exception("ERROR: define either spectrum or energy")
 
     for i in range(0, size):
         im.energies[i] = energy * spc.eV * 1e3
@@ -275,7 +283,7 @@ def generate_from_image(
     img_scale,
     energy,
     energy_spread=0.0,
-    offset=None,
+    offset=[0, 0],
     spectrum=None,
     bkg_phot=None,
     bkg_spect=None,
@@ -308,7 +316,7 @@ def generate_from_image(
 
     # ensuring sufficient array lengths for source and bkg counts
     if bkg_phot is not None:
-        if isinstance(bkg_phot, float):
+        if type(bkg_phot) is float:
             bkg_phot = int(np.around(bkg_phot * no_photons))
 
         # create image instance
@@ -331,7 +339,7 @@ def generate_from_image(
 
     elif energy is None:
         # define either spectrum or energy
-        raise ValueError("ERROR: define either spectrum or energy")
+        raise Exception("ERROR: define either spectrum or energy")
 
     # Load the image and convert it to grayscale
     img = Image.open(image_path).convert("L")
@@ -346,18 +354,16 @@ def generate_from_image(
 
     # Draw N samples from the probability mass function
     source_counts = np.random.choice(
-        np.arange(img_array.size),
-        size=no_photons,
-        p=pmf.flatten(),
+        np.arange(img_array.size), size=no_photons, p=pmf.flatten()
     )
-    pixel_locations = None
+
     # generate bkg photons
     if bkg_phot is not None:
         # random point of origin within the input image (not based on FoV)
         bkg_counts = np.random.choice(np.arange(img_array.size), size=bkg_phot)
 
         # random bkg vs based on flux
-        if bkg_spect is None:
+        if bkg_spect == None:
             # rondomize photon TOA, while keeping the respective orders of both source and bkg photons (not based on relative fluxes)
             indices = np.arange(bkg_phot + no_photons)
             pixel_locations = np.concatenate(
@@ -385,7 +391,7 @@ def generate_from_image(
 
         else:
             # save spectrum when given
-            # TODO: sample the spectrum in process.py
+            """TODO: sample the spectrum in process.py"""
             # load file containing spectrum or copy the spectrum
             if isinstance(bkg_spect, str):
                 photon_img.bkg_spect = np.loadtxt(bkg_spect)

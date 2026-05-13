@@ -2,172 +2,11 @@ import re
 import math
 import warnings
 import numpy as np
+import scipy.constants as spc
+import scipy.interpolate as interp
 
 import matplotlib.pyplot as plt
 from astropy.io import fits
-
-# class detector():
-#     """
-#     Class defining a hypothetical x-ray detector.
-#     It contains the code needed to generate the interferometer and adapt some of its characteristics afterwards.
-#     """
-
-#     def __init__(self, res_E, res_t, res_pos, E_range, pos_range,
-#                  pos_noise = 0., energy_noise = 0., t_noise = 0.,
-#                  quant_eff = r"../XRImulator/Models/detector_qe/Si_9p5_um_transmission_data.txt",
-#                  response_matrix = None):
-#         """
-#         This function is the main function that takes the 'real' photons at the camera and
-#         converts them to detector output data as if the detector had just detected and measured those photons.
-#         It models the detector ranges, resolutions and noise for time, posistion and energie measurements
-#         whether they are absorbed along the way, how much noise there is.
-
-#         TODO it can be adopted to include more realistic models of detectors; and or a seperate background class;
-#         and or energy consumption and readout times; and or more.
-
-#         Parameters:\n
-#         res_E (float) = Energy resolution of CCD's in instrument (in KeV)\n
-#         res_t (float) = Time resolution of CCD's in instrument (seconds)\n
-#         res_pos (float) = Position resolution of CCD's in instrument (in micrometers)\n
-
-#         E_range (array-like of floats) = Range of energies that can be recorded (in KeV)\n
-#     	pos_range (array-like of floats) = Range of positions that can be recorded (in micrometers)\n #set by detector surface area
-
-#         pos_noise (float) = Noise value in micrometers used as sigma in normal distribution around 'true' position. Default 0. means no noise.\n
-#         energy_noise (float) = Noise value used as percentage of 'true' energy to determine sigma in normal distribution. Default 0. means no noise.\n
-#         t_noise (float) = Noise value in seconds used as sigma in normal distribution around 'true' time of arrival. Default 0. means no noise.\n
-
-#         quant_eff (string) = A file name, including the path. The file contains the quantum efficiancy of the detector in the form (1 - QE) per energy.\n
-#         response_matrix (string) = A file name, including the path. The file contains the response_matrix of the detector.\n
-#         """
-
-#         # Different resolutions, with energy, time and pixel size.
-#         self.res_E = res_E * 1e3 * spc.eV
-#         self.res_t = res_t
-#         self.res_pos = res_pos * 1e-6
-
-#         # energy and positional ranges of the detector
-#         self.E_range = E_range * 1e3 * spc.eV
-#         self.pos_range = pos_range * 1e-6
-
-#         # Useful shorthand
-#         self.pos_noise = pos_noise * 1e-6
-#         self.energy_noise = energy_noise * spc.eV * 1e3
-#         self.t_noise = t_noise
-
-#         # loading the quantum efficiancy from a file with file format from https://henke.lbl.gov/
-#         self.quant_eff = np.loadtxt(quant_eff, skiprows = 2)
-
-#         # TODO: add the reading in of the response matrix of the detector
-#         self.response_matrix = response_matrix
-
-#         # add noise to the real energies, positions and arival times TODO: this will later be done by response matrices
-#         # self.noise_photon_energies(instrument, instrument_data)
-#         # self.noise_photon_pos(instrument, instrument_data)
-#         # self.noise_photon_toa(instrument_data)
-
-#         # pixelise the noised data TODO: this will later be done by response matrices
-#         # self.discretize_E(instrument)
-#         # self.discretize_t(instrument)
-#         # self.discretize_pos(instrument)
-
-#     def noise_photon_energies(self, instrument_data, where):
-#         """
-#         This function is a helper function for process_image that specifically processes the energies that photons have and
-#         how the instrument records them.
-#         """
-#         if self.energy_noise > 0.:
-#             # % is for forcing it to be impossible for photons to be measured above or below energy range, while keeping random distribution
-#             # If you want to avoid high energies bleeding over in the case of for example an emission line you want to image,
-#             # simply set the energy range too big to have this contamination.
-#             instrument_data.energies[where] = instrument_data.energies[where] + np.random.normal(0, self.energy_noise, instrument_data.energies[where].size)
-#                                                 # - self.E_range[0])
-#                                                 #     % (self.E_range[1] - self.E_range[0])
-#                                                 #     + self.E_range[0])
-#             instrument_data.energies[where][instrument_data.energies[where] < self.E_range[0]] = self.E_range[0]
-#             instrument_data.energies[where][instrument_data.energies[where] > self.E_range[1]] = self.E_range[1]
-#         return instrument_data
-
-#     def noise_photon_toa(self, instrument_data, where):
-#         """
-#         This function is a helper function for process_image that specifically processes the times at which photons arrive and
-#         how the instrument records them.
-#         """
-#         if self.t_noise > 0.:
-#             # % is for forcing it to be impossible for photons to arrive late or early, while keeping random distribution
-#             instrument_data.toa[where] = np.random.normal(instrument_data.toa[where], self.t_noise, instrument_data.toa[where].size)
-#                                                         #    % np.max(instrument_data.toa[where]))
-#         return instrument_data
-
-#     def noise_photon_pos(self, instrument_data, where):
-#         """
-#         This function processes the positions at which photons arrive and
-#         how the instrument records them.
-#         """
-
-#         # Noises up the data
-#         if self.pos_noise > 0.:
-#             instrument_data.pos[where] = instrument_data.pos[where] + np.random.normal(0, self.pos_noise, instrument_data.pos[where].size)# - self.pos_range[0])
-#                                             #  % (self.pos_range[1] - self.pos_range[0])
-#                                             #  + self.pos_range[0])
-#             instrument_data.pos[where][instrument_data.pos[where] < self.pos_range[0]] = self.pos_range[0]
-#             instrument_data.pos[where][instrument_data.pos[where] > self.pos_range[1]] = self.pos_range[1]
-
-#         return instrument_data
-
-#     def discretize_E(self, instrument_data, where):
-#         """
-#         Method that discretizes energies of incoming photons into energy channels.
-#         Adds an array of these locations stored to the class under the name self.discrete_E.
-#         """
-#         instrument_data.energies[where] = (instrument_data.energies[where] - self.E_range[0]) // self.res_E
-
-#     def channel_to_E(self, instrument_data, where):
-#         """ Method that turns discretized energies into the energies at the center of their respective channels. """
-#         instrument_data.energies[where] = (instrument_data.energies[where] + .5) * self.res_E + self.E_range[0]
-
-#     def discretize_pos(self, instrument_data, where):
-#         """
-#         Method that discretizes positions of incoming photons into pixel positions.
-#         Adds an array of these locations stored to the class under the name self.discrete_pos.
-#         """
-#         instrument_data.pos[where] = (instrument_data.pos[where] - self.pos_range[0]) // self.res_pos
-
-#     def pixel_to_pos(self, instrument_data, where):
-#         """ Method that turns discretized positions into the positions at the center of their respective pixels. """
-#         instrument_data.pos[where] = (instrument_data.pos[where] + .5) * self.res_pos + self.pos_range[0]
-
-#     def discretize_t(self, instrument_data, where):
-#         """
-#         Method that discretizes times of arrival of incoming photons into time steps since start of observation.
-#         Adds an array of these times stored to the class under the name self.discrete_t.
-#         """
-#         instrument_data.toa[where] = ((instrument_data.toa[where] - instrument_data.toa[0]) // self.res_t)#.astype(int)
-
-#     def tstep_to_t(self, instrument_data, where):
-#         """ Method that turns discretized time steps into the times at the center of their respective steps. """
-#         instrument_data.toa[where] = (instrument_data.toa[where] + .5) * self.res_t
-
-#     def add_detector_effects(self, instrument_data, where):
-#         """ Applies the detector effects on the exact photon properties
-
-#             Parameters:
-
-#             instrument_data (interferometer_data object) = the exact photon properties.\n
-#             where (list): list of booleans on which photons to apply the effects.
-#         """
-
-#         instrument_data = self.noise_photon_energies(instrument_data, where)
-#         instrument_data = self.noise_photon_toa(instrument_data, where)
-#         instrument_data = self.noise_photon_pos(instrument_data, where)
-#         self.discretize_E(instrument_data, where)
-#         self.channel_to_E(instrument_data, where)
-#         self.discretize_pos(instrument_data, where)
-#         self.pixel_to_pos(instrument_data, where)
-#         self.discretize_t(instrument_data, where)
-#         self.tstep_to_t(instrument_data, where)
-
-#         return instrument_data
 
 
 class baseline:
@@ -272,7 +111,7 @@ class baseline:
         # self.camera = detector(res_E = 0.1, res_t = 1, res_pos = 2, E_range = np.array([1, 7]), pos_range = np.array([-22000, 22000])) #np.array([-1000, 1000])) #np.array([-300, 300])) ## current CMOS
 
         # initialize the search for the sampled angles in the file names
-        float_finder = re.compile(r".*([0-9]+\.[0-9]+)")
+        float_finder = re.compile(f".*([0-9]+\\.[0-9]+)")
 
         angles = []
         reflec_data = []
@@ -293,18 +132,6 @@ class baseline:
             # save to attribute
             self.mirr_reflec = np.array([angles, reflec_data], dtype=object).T
 
-        # shows the mirror reflectivity
-        # for angle in self.mirr_reflec:
-        #     plt.plot(angle[1][0] / 1000, angle[1][1], label = r"$\theta_{\mathrm{g}} = $" + str(angle[0]) + r"$^{\circ}$")
-
-        # plt.ylabel("Reflectivity")
-        # plt.xlabel("Energy (keV)")
-        # plt.xlim(1, 7)
-        # plt.ylim(0, 1)
-        # plt.legend()
-        # # plt.savefig("reflectivity.pdf")
-        # plt.show()
-
         # check if input values conform to physical constraints, use math.isclose against binary fraction approximation errors
         if not math.isclose(self.D, self.F * self.beam_angle):
             raise Exception(
@@ -318,96 +145,6 @@ class baseline:
             raise Exception(
                 r"ERROR: The number of pairs must be an integer and at least one!"
             )
-
-        # check if the length is within limits, only when possible
-        # try:
-        #     if interferometer.max_ob_length < self.L + self.distance_M1_4() + self.bench_length:
-        #         warnings.warn("Warning: the chosen obtical bench exeeds the maximum length!")
-        # except (TypeError, AttributeError):
-        #     warnings.warn("Warning: missing information to check the length restrictions!")
-
-    # def add_custom_detector(self, res_E, res_t, res_pos, E_range, pos_range, pos_noise = 0., E_noise = 0., t_noise = 0.,
-    #                         quant_eff = r"CModels/Detector QE/Si_9p5_um_transmission_data.txt",
-    #                         response_matrix = None):
-    #     """ Allows for defining a custom detector.
-
-    #         Parameters:\n
-    #         res_E (float) = Energy resolution of CCD's in instrument (in KeV)\n
-    #         res_t (float) = Time resolution of CCD's in instrument (seconds)\n
-    #         res_pos (float) = Position resolution of CCD's in instrument (in micrometers)\n
-
-    #         E_range (array-like of floats) = Range of energies that can be recorded (in KeV)\n
-    #         pos_range (array-like of floats) = Range of positions that can be recorded (in micrometers)\n #set by detector surface area
-
-    #         pos_noise (float) = Noise value in micrometers used as sigma in normal distribution around 'true' position. Default 0. means no noise.\n
-    #         energy_noise (float) = Noise value used as percentage of 'true' energy to determine sigma in normal distribution. Default 0. means no noise.\n
-    #         t_noise (float) = Noise value in seconds used as sigma in normal distribution around 'true' time of arrival. Default 0. means no noise.\n
-
-    #         quant_eff (string) = A file name, including the path. The file contains the quantum efficiancy of the detector in the form (1 - QE) per energy.\n
-    #         response_matrix (string) = A file name, including the path. The file contains the response_matrix of the detector.\n
-
-    #     """
-    #     self.camera = detector(res_E, res_t, res_pos, E_range, pos_range, pos_noise, E_noise, t_noise, quant_eff, response_matrix)
-
-    # def path_difference_change(self, times):
-    #     """Add function calls that calculate the path length difference changing over time due to different effects"""
-
-    #     # placeholder value of 0 m
-    #     return 0 * times
-
-    # def eff_area(self, photon_energies):
-
-    #     # return absolute area when no reflectivity information is given,
-    #     # asumes perfect reflectivity and camera quantum efficiency
-    #     if self.mirr_reflec == None:
-    #         # assuming square camera / detector
-    #         apperature_area = np.power(self.camera.pos_range[1] - self.camera.pos_range[0], 2)
-    #         return np.repeat(apperature_area, photon_energies.size)
-
-    #     else:
-    #         values = []
-    #         sampled_energies = []
-    #         sampled_angles = []
-
-    #         # looping over all sampled reflection angle
-    #         for item in self.mirr_reflec:
-
-    #             # retrieving sampled energies and their respected reflectivity at the sampled angle
-    #             energies, reflectivity = item[1]
-    #             values.extend(reflectivity)
-
-    #             # assume energies are given in eV, turn into J
-    #             sampled_energies.extend(energies * spc.eV)
-
-    #             # assume angles are given in degries, turn into radians
-    #             sampled_angles.extend(np.repeat(item[0] * np.pi / 180, energies.size))
-
-    #         points = np.array([sampled_energies, sampled_angles]).T
-
-    #         """TODO: Below is slow"""
-    #         mirr_reflec = interp.griddata(points, values, (photon_energies, np.repeat(self.grazing_angle, photon_energies.size)), method='nearest')
-
-    #         # assuming square camera / detector
-    #         apperature_area = np.power(self.camera.pos_range[1] - self.camera.pos_range[0], 2)
-
-    #         # retrieve and interpolate the quantum efficiancy of the camera / detector
-    #         cam_quant_eff = self.camera.quant_eff.T
-
-    #         """Testing plots"""
-    #         # plt.plot(cam_quant_eff[0] / 1000, 1 - cam_quant_eff[1])
-    #         # plt.ylabel("Quantum efficiency")
-    #         # plt.xlabel("Energy (keV)")
-    #         # plt.xlim(1, 7)
-    #         # plt.ylim(0, 1)
-    #         # plt.savefig("quant_eff.pdf")
-    #         # plt.show()
-
-    #         cam_eff_area = interp.interp1d(cam_quant_eff[0] * spc.eV, 1 - cam_quant_eff[1])(photon_energies)
-
-    #         # equation in 4.3 Mirror quality and effective area from Phil Uttley et al. (2020)
-    #         mirr_eff_area = (1/12) * apperature_area * np.power(mirr_reflec, 2)
-
-    #         return mirr_eff_area * cam_eff_area
 
 
 class interferometer:

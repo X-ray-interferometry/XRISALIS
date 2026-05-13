@@ -1,3 +1,4 @@
+import copy
 import warnings
 import numpy as np
 import scipy.special as sps
@@ -5,6 +6,8 @@ import scipy.stats as sampler
 import scipy.constants as spc
 import scipy.interpolate as interp
 from astropy.io import fits
+from astropy import units as u
+
 
 # for testing
 import matplotlib.pyplot as plt
@@ -66,6 +69,12 @@ class interferometer_data:
 
         # detector value, which can be subjected to detector effects, digitize to pixel positions
         self.pos = np.round(self.actual_pos / 5e-6) * 5e-6
+
+    def copy(self):
+        """
+        Function to create a copy of the interferometer_data object.
+        """
+        return copy.copy(self)
 
     def process_photon_e_base(self, instrument, image, eff_area_show=True):
         """
@@ -218,27 +227,26 @@ class interferometer_data:
         # see Willingale (2004) for the definitions of the dimensionless coordinate u,
         # used for the Fresnel integrals
         u_0 = baseline.W * np.sqrt(2 / (wavelength * baseline.L))
+        u_1 = lambda u, u_0: u - u_0 / 2
+        u_2 = lambda u, u_0: u + u_0 / 2
 
         # Only sample the slit size, or set values
         if y_pos is None:
             y_pos = np.linspace(-baseline.W / 2, baseline.W / 2, int(samples))
         u = y_pos * np.sqrt(2 / (wavelength * baseline.L))
 
-        u_1 = u - u_0 / 2
-        u_2 = u + u_0 / 2
-
         # Fresnel integrals
-        S_1, C_1 = sps.fresnel(u_1)
-        S_2, C_2 = sps.fresnel(u_2)
+        S_1, C_1 = sps.fresnel(u_1(u, u_0))
+        S_2, C_2 = sps.fresnel(u_2(u, u_0))
 
         # Fresnel amplitude
         A = (C_2 - C_1) + 1j * (S_2 - S_1)
 
         # Fresnel intensity
         A_star = np.conjugate(A)
-        Int = np.abs(A * A_star)
+        I = np.abs(A * A_star)
 
-        return Int, u
+        return I, u
 
     def process_photon_dpos(
         self, instrument, image, pure_diffraction=False, pure_fringes=False
