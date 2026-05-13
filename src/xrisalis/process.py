@@ -6,7 +6,6 @@ import scipy.stats as sampler
 import scipy.constants as spc
 import scipy.interpolate as interp
 from astropy.io import fits
-from astropy import units as u
 
 
 # for testing
@@ -227,8 +226,12 @@ class interferometer_data:
         # see Willingale (2004) for the definitions of the dimensionless coordinate u,
         # used for the Fresnel integrals
         u_0 = baseline.W * np.sqrt(2 / (wavelength * baseline.L))
-        u_1 = lambda u, u_0: u - u_0 / 2
-        u_2 = lambda u, u_0: u + u_0 / 2
+
+        def u_1(u, u_0):
+            return u - u_0 / 2
+
+        def u_2(u, u_0):
+            return u + u_0 / 2
 
         # Only sample the slit size, or set values
         if y_pos is None:
@@ -244,9 +247,9 @@ class interferometer_data:
 
         # Fresnel intensity
         A_star = np.conjugate(A)
-        I = np.abs(A * A_star)
+        Int = np.abs(A * A_star)
 
-        return I, u
+        return Int, u
 
     def process_photon_dpos(
         self, instrument, image, pure_diffraction=False, pure_fringes=False

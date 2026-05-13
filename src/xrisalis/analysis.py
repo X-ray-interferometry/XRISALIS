@@ -133,7 +133,7 @@ def image_recon_smooth(
             # calculate the frequency grid onto which the real sampled frequencies are mapped
             fft_freqs = np.fft.fftfreq(n, d)
             if verbose:
-                print(f"Fourier frequencies calculated.")
+                print("Fourier frequencies calculated.")
 
             # find closest frequency grid point in numpy.fft.fftfreq of the real sampled frequencies,
             # dividing by frequency bin width: Delta f = 1 / (n * d)

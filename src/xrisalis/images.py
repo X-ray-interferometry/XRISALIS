@@ -1,13 +1,9 @@
 from PIL import Image
-import gc
 import numpy as np
 import scipy.constants as spc
 import pandas as pd
-from astropy.io import fits
-from astropy.wcs import WCS
 
 # for testing
-import matplotlib.pyplot as plt
 
 
 class image:
@@ -217,8 +213,6 @@ def point_source_multichromatic_gauss(size, alpha, beta, energy, energy_spread):
     """
     im = image(size)
 
-    spectrum = None
-
     im.energies = np.random.normal(energy, energy_spread, size) * spc.eV * 1e3
     for i in range(0, size):
         im.loc[i] = np.array([alpha, beta]) * 2 * np.pi / (3600 * 360)
@@ -363,7 +357,7 @@ def generate_from_image(
         bkg_counts = np.random.choice(np.arange(img_array.size), size=bkg_phot)
 
         # random bkg vs based on flux
-        if bkg_spect == None:
+        if bkg_spect is None:
             # rondomize photon TOA, while keeping the respective orders of both source and bkg photons (not based on relative fluxes)
             indices = np.arange(bkg_phot + no_photons)
             pixel_locations = np.concatenate(

@@ -2,8 +2,6 @@ import re
 import math
 import warnings
 import numpy as np
-import scipy.constants as spc
-import scipy.interpolate as interp
 
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -111,7 +109,7 @@ class baseline:
         # self.camera = detector(res_E = 0.1, res_t = 1, res_pos = 2, E_range = np.array([1, 7]), pos_range = np.array([-22000, 22000])) #np.array([-1000, 1000])) #np.array([-300, 300])) ## current CMOS
 
         # initialize the search for the sampled angles in the file names
-        float_finder = re.compile(f".*([0-9]+\\.[0-9]+)")
+        float_finder = re.compile(".*([0-9]+\\.[0-9]+)")
 
         angles = []
         reflec_data = []
