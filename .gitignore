@@ -9,11 +9,11 @@ random/
 output_data/
 results/
 
-src/curtains/models/*
-!src/curtains/models/arf.fits
-!src/curtains/models/rmf.fits
+src/xrisalis/models/*
+!src/xrisalis/models/arf.fits
+!src/xrisalis/models/rmf.fits
 
 *.egg-info/
 *.pdf
 simulation.py
-src/curtains/version.py
+src/xrisalis/version.py
