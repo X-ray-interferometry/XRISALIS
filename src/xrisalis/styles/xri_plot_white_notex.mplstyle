@@ -1,9 +1,13 @@
-figure.dpi: 100
+figure.dpi: 150
 
-text.usetex: True
+text.usetex: False
+mathtext.fontset: cm
+axes.formatter.use_mathtext: True
+axes.unicode_minus: False
 font.family: serif
-font.sans-serif: Helvetica
-font.size: 18  
+font.serif: cmr10, DejaVu Serif
+font.size: 14
+font.weight: bold
 
 axes.linewidth: 1.0
 
@@ -17,17 +21,19 @@ xtick.major.width: 1.5
 ytick.major.width: 1.5
 xtick.minor.width: 1.0
 ytick.minor.width: 1.0
-xtick.labelsize: 18  
-ytick.labelsize: 18  
+xtick.labelsize: 14  
+ytick.labelsize: 14  
 
 axes.facecolor: white
 figure.facecolor: white
 savefig.facecolor: white
 axes.edgecolor: black
 axes.labelcolor: black
+axes.labelweight: bold
 xtick.color: black
 ytick.color: black
 text.color: black
 legend.facecolor: white
 legend.edgecolor: black
 axes.titlecolor: black
+axes.titleweight: bold
