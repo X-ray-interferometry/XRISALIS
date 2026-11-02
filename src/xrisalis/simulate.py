@@ -12,7 +12,7 @@ import scipy.stats as sampler
 from .config import KEV, H, C
 from .io import PhotonList, EventList
 from .units import to_seconds
-from .pointing import attitude_index
+from .pointing import attitude_at
 
 
 # ==========================================================================
@@ -283,11 +283,14 @@ def off_axis_angles_2d(pointing, toa, loc):
     Decomposes the sky offset (source relative to the boresight) into the
     baseline/roll frame: ``theta_par`` along the fringe (DETY, interferometric)
     axis and ``theta_perp`` along the cross (DETZ) axis. ``loc`` is the (N,2)
-    sky offset [rad]; ``toa`` the integer time-step index per photon.
+    sky offset [rad]. ``pointing`` is either an attitude stream indexed by
+    ``toa`` (integer row per photon), or, with ``toa=None``, the per-photon
+    attitude ``(N, 3)`` itself (see :func:`xrisalis.pointing.attitude_at`).
     """
-    pos_rel = pointing[toa, :2] - loc
+    att = pointing if toa is None else pointing[toa]
+    pos_rel = att[:, :2] - loc
     r = np.sqrt(pos_rel[:, 0] ** 2 + pos_rel[:, 1] ** 2)
-    ang = pointing[toa, 2] - np.arctan2(pos_rel[:, 0], pos_rel[:, 1])
+    ang = att[:, 2] - np.arctan2(pos_rel[:, 0], pos_rel[:, 1])
     return np.cos(ang) * r, np.sin(ang) * r
 
 
@@ -508,19 +511,56 @@ def sample_photons_components(arf, components, exposure, rng=None):
             "baseline_id": np.concatenate(bids)}
 
 
+def _needs_own_sampler(source):
+    """True for sources (or combinations) that sample their own photons."""
+    if hasattr(source, "sample_arf"):
+        return True
+    return any(hasattr(s, "sample_arf") for s in getattr(source, "sources", []))
+
+
+def _concat_samples(parts):
+    keys = ("time", "energy_kev", "ra_deg", "dec_deg", "src_id", "baseline_id")
+    parts = [p for p in parts if p["time"].size]
+    if not parts:
+        z = np.array([])
+        return {"time": z, "energy_kev": z, "ra_deg": z, "dec_deg": z,
+                "src_id": z.astype(np.int32), "baseline_id": z.astype(np.int16)}
+    return {k: np.concatenate([p[k] for p in parts]) for k in keys}
+
+
+def _sample_mixed(source, arf, exposure, rng):
+    """Sample a self-sampling source, or a combination of those with ordinary
+    component sources (src_id = index of the sub-source, as in CompositeSource)."""
+    if hasattr(source, "sample_arf"):
+        return source.sample_arf(arf, exposure, rng=rng)
+    parts = []
+    for k, sub in enumerate(source.sources):
+        if hasattr(sub, "sample_arf"):
+            d = sub.sample_arf(arf, exposure, rng=rng)
+        else:
+            d = sample_photons_components(arf, sub.components(), exposure, rng=rng)
+        d["src_id"] = np.full(d["time"].size, k, dtype=np.int32)
+        parts.append(d)
+    return _concat_samples(parts)
+
+
 def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
                      pointing=(0.0, 0.0), seed=None):
     """High-level generate stage: -> :class:`~xrisalis.io.PhotonList`.
 
     ``source`` may be any :class:`xrisalis.sources.SourceModel` (point, image,
     cube, or a combination via ``a + b``) — routed through
-    :func:`sample_photons_components` — or a SimputSource / object exposing
-    ``ra_deg``, ``dec_deg``, ``spectra`` (the point-catalog fast path).
+    :func:`sample_photons_components` — an :class:`~xrisalis.sources.XrimodelSource`
+    (or a combination containing one), which samples its own photons, or a
+    SimputSource / object exposing ``ra_deg``, ``dec_deg``, ``spectra`` (the
+    point-catalog fast path).
     """
     exposure = to_seconds(exposure)                  # accept a time Quantity
     if rng is None:
         rng = np.random.default_rng(seed)
-    if hasattr(source, "components"):                 # a SourceModel
+    if _needs_own_sampler(source):                    # xrimodel (or a mix with it)
+        d = _sample_mixed(source, arf, exposure, rng)
+    elif hasattr(source, "components"):               # a SourceModel
         d = sample_photons_components(arf, source.components(), exposure, rng=rng)
     else:                                             # SimputSource / points
         d = sample_photons(arf.energ_lo, arf.energ_hi, arf.per_baseline,
@@ -619,10 +659,10 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
     t_s = np.asarray(photons.time, dtype=float)          # arrival times [s]
     attitude = instrument.gen_pointing(float(t_s.max()) if t_s.size else 1.0,
                                        pointing=pointing)
-    # attitude rows are spaced by instrument.time_step SECONDS, so the row for a
-    # photon is int(t / time_step) -- int(t) is only right at time_step = 1.
-    toa = attitude_index(t_s, instrument.time_step, attitude.shape[0])
-    theta, theta_perp = off_axis_angles_2d(attitude, toa, photons.loc_rad)
+    # attitude rows are spaced by instrument.time_step SECONDS; each photon sees
+    # the attitude interpolated at its own arrival time
+    att = attitude_at(attitude, instrument.time_step, t_s)
+    theta, theta_perp = off_axis_angles_2d(att, None, photons.loc_rad)
 
     # 1) RMF energy redistribution (vectorized)
     pi, detected_kev, valid = redistribute_rmf(photons.energy_kev, rmf, rng=rng)

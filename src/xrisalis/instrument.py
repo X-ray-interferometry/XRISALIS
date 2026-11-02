@@ -342,8 +342,8 @@ class Interferometer:
         Sub-second ``time_step`` is what an attitude study needs: a jitter or
         gyro-residual stream carrying content near 1 Hz has to be sampled well
         below a second, while the photons still arrive over the full exposure.
-        Use :func:`~xrisalis.pointing.attitude_index` to map photon times onto
-        rows — never ``int(t)``, which is only correct at ``time_step = 1``.
+        Use :func:`~xrisalis.pointing.attitude_at` to get the attitude at photon
+        times (linear interpolation between rows).
 
         The boresight (pitch, yaw) columns come from the pointing model
         (``pointing`` argument if given, else ``self.pointing``; see

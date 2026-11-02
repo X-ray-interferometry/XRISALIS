@@ -19,7 +19,8 @@ Requirements
  
 * **Python 3.11 or newer**
  
-The core scientific dependencies (``numpy``, ``astropy``, ``matplotlib``, ``scipy`` and ``pillow``) are installed automatically and do not
+The core scientific dependencies (``numpy``, ``astropy``, ``matplotlib``, ``scipy``, ``pillow`` and
+`xrimodel <https://github.com/X-ray-interferometry/xrimodel>`_) are installed automatically and do not
 need to be set up by hand. To run the example notebook provided in the repository, you will also need ``jupyter`` and ``ipywidgets``.
  
 1. Clone the repository
@@ -87,3 +88,29 @@ Check that the package imports and reports a version:
 .. code-block:: bash
  
    python -c "import xrisalis; from xrisalis import version; print(xrisalis.version.__version__)"
+
+xrimodel source models
+----------------------
+
+Source models built with `xrimodel <https://github.com/X-ray-interferometry/xrimodel>`_
+(a spectrum per pixel, adaptive grids, shared light curves and power spectra, per-pixel
+light-travel delays, 3-D binaries) are used like any other source. ``load_source``
+recognises xrimodel files, and they combine with the built-in sources:
+
+.. code-block:: python
+
+   import xrisalis as xs
+
+   src = xs.load_source("cygx1.fits")             # an xrimodel file -> XrimodelSource
+   src = src + xs.point_source(0.0, 1e-7, spectrum)
+   photons = xs.generate_photons(src, arf, 1e4, seed=1)
+   events = xs.redistribute(photons, instrument, rmf, seed=2)
+
+xrimodel draws the photons itself and assigns them to baselines by thinning against the
+ARF. Its tangent-plane offsets (uas, x East, y North) become RA/Dec offsets in degrees
+around (0, 0); the model's own reference position is ``src.reference_deg``.
+
+Each photon sees the attitude (pitch, yaw, roll) interpolated at its own arrival time
+(``xrisalis.pointing.attitude_at``), both in ``redistribute`` and in the per-event roll
+and boresight used by ``reconstruct``.
+

@@ -166,7 +166,7 @@ class EventList:
     true_energy_kev: np.ndarray = None  # simulation ground truth [keV] (optional)
     ra_deg: np.ndarray = None
     dec_deg: np.ndarray = None
-    pointing: np.ndarray = None    # (T,3) pitch,yaw,roll [rad]; row = int(time/time_step)
+    pointing: np.ndarray = None    # (T,3) pitch,yaw,roll [rad]; row k at t = k*time_step
     time_step: float = 1.0         # attitude sampling interval [s] (POINTING row spacing)
     ebounds: dict = None           # {'CHANNEL','E_MIN','E_MAX'}
     exposure: float = None
@@ -268,22 +268,18 @@ class EventList:
                              f"(pitch, yaw, roll) columns; got {arr.shape[1]}")
         return arr
 
-    def _attitude_index(self, stream):
-        """Row of an attitude stream belonging to every event.
-
-        Rows are spaced by :attr:`time_step` SECONDS, so the row is
-        ``int(t / time_step)`` — plain ``int(t)`` silently compresses the whole
-        attitude timeline whenever ``time_step != 1``.
-        """
-        from .pointing import attitude_index
-        return attitude_index(self.time, self.time_step, stream.shape[0])
+    def _attitude_per_event(self, stream):
+        """Attitude ``(N, 3)`` per event, interpolated at the event times."""
+        from .pointing import attitude_at
+        return attitude_at(stream, self.time_step, self.time)
 
     def roll_per_event_from(self, attitude=None):
-        """Roll [rad] per event from ``attitude`` (see :meth:`attitude_stream`)."""
+        """Roll [rad] per event from ``attitude`` (see :meth:`attitude_stream`),
+        interpolated at each event's time."""
         stream = self.attitude_stream(attitude)
         if stream is None:
             return np.zeros(len(self))
-        return stream[self._attitude_index(stream), 2]
+        return self._attitude_per_event(stream)[:, 2]
 
     def boresight_per_event(self, attitude=None):
         """``(N, 2)`` boresight ``(pitch, yaw)`` [rad] per event.
@@ -296,7 +292,7 @@ class EventList:
         stream = self.attitude_stream(attitude)
         if stream is None:
             return np.zeros((len(self), 2))
-        return stream[self._attitude_index(stream), :2]
+        return self._attitude_per_event(stream)[:, :2]
 
     def mean_boresight(self):
         """Mean recorded boresight ``(pitch, yaw)`` [rad] over the events.

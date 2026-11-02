@@ -9,6 +9,8 @@ curve**). Every model reduces to a list of :class:`Component` objects that the
 * data cubes F(alpha,delta,E)     -> :class:`CubeSource` (one component per
                                      energy slice, each an image morphology)
 * any combination                 -> ``a + b`` -> :class:`CompositeSource`
+* xrimodel models (per-pixel       -> :class:`XrimodelSource` (sampled by xrimodel,
+  spectra, timing, delays)            folded through the ARF by thinning)
 
 Spectra are ``(energy_kev, fluxdensity)`` arrays [photon/s/cm^2/keV]; light
 curves are callables ``rate(t)`` on ``[0, exposure]`` (None = steady). Core
@@ -617,6 +619,7 @@ def load_source(path, kind="auto", **overrides):
 
     Detects the input type and routes to the right builder:
 
+    * an xrimodel file (``XRIFMT``)  -> :class:`XrimodelSource`
     * a ``SRC_CAT`` extension       -> SIMPUT catalog  (:func:`from_simput`)
     * a 3-D image HDU               -> spectral cube   (:func:`from_fits_cube`)
     * a 2-D image HDU               -> extended image  (:func:`from_fits_image`)
@@ -625,7 +628,7 @@ def load_source(path, kind="auto", **overrides):
     ----------
     path : str
         FITS file to load.
-    kind : {'auto', 'simput', 'image', 'cube'}
+    kind : {'auto', 'xrimodel', 'simput', 'image', 'cube'}
         Force a reader instead of auto-detecting.
     **overrides
         Forwarded to the image/cube builders (``spectrum``, ``scale_arcsec``,
@@ -641,7 +644,9 @@ def load_source(path, kind="auto", **overrides):
     if kind == "auto":
         with fits.open(path) as hdul:
             names = [h.name for h in hdul]
-            if "SRC_CAT" in names:
+            if "XRIFMT" in hdul[0].header:
+                kind = "xrimodel"
+            elif "SRC_CAT" in names:
                 kind = "simput"
             else:
                 ndim = 0
@@ -659,6 +664,11 @@ def load_source(path, kind="auto", **overrides):
                         f"Could not identify a source in {path!r}; found HDUs "
                         f"{names}. Pass kind='simput'|'image'|'cube' to force.")
 
+    if kind == "xrimodel":
+        if overrides:
+            warnings.warn(f"load_source: ignoring {list(overrides)} for an "
+                          "xrimodel file (its parameters come from the file).")
+        return XrimodelSource(path)
     if kind == "simput":
         if overrides:
             warnings.warn(f"load_source: ignoring {list(overrides)} for a "
@@ -668,4 +678,116 @@ def load_source(path, kind="auto", **overrides):
         return from_fits_cube(path, **overrides)
     if kind == "image":
         return from_fits_image(path, **overrides)
-    raise ValueError(f"Unknown kind {kind!r}; use auto/simput/image/cube.")
+    raise ValueError(f"Unknown kind {kind!r}; use auto/xrimodel/simput/image/cube.")
+
+
+# ============================================================================
+# xrimodel models (extended SIMPUT): spectra per pixel, timing, delays
+# ============================================================================
+UAS_PER_DEG = 3600e6
+
+
+class XrimodelSource(SourceModel):
+    """A source model built with `xrimodel <https://github.com/X-ray-interferometry/xrimodel>`_.
+
+    xrimodel models carry what the separable components here cannot: a spectrum
+    per pixel (Doppler/redshift, broadening and absorption maps, or a dense cube),
+    adaptive grids, light curves and power spectra shared between layers, and
+    per-pixel light-travel delays. Photons are therefore drawn by xrimodel itself
+    and folded through the ARF by exact thinning (see :meth:`sample_arf`).
+
+    Positions: xrimodel works in tangent-plane offsets (uas, x East, y North)
+    from the model's reference position. They are returned as small RA/Dec
+    offsets in degrees around (0, 0) (``ra_deg = x / 3.6e9``), the frame the
+    off-axis and fringe maths here expects; the model's own reference
+    position is kept in :attr:`reference_deg`.
+
+    Parameters
+    ----------
+    model : xrimodel.Model or str
+        A model, or the path of an xrimodel (or plain SIMPUT) file.
+    """
+
+    def __init__(self, model):
+        import xrimodel as xm
+
+        self.model = model if isinstance(model, xm.Model) else xm.read_model(model)
+        self.layer_names = [layer.name for layer in self.model.layers]
+
+    @property
+    def reference_deg(self):
+        return self.model.ra, self.model.dec
+
+    def components(self):
+        raise TypeError(
+            "an XrimodelSource is sampled by xrimodel itself and has no separable "
+            "components; pass it (or a combination containing it) to "
+            "generate_photons")
+
+    def sample_arf(self, arf, exposure, rng=None):
+        """Photons over ``[0, exposure]`` s, assigned to baselines by the ARF.
+
+        Photons are sampled on the maximum total effective area ``A_max``; each
+        is then kept on baseline ``i`` with probability ``A_i(E) / A_max`` (or
+        dropped), which is exact Poisson thinning. Energies are continuous.
+        Returns the same dict as :func:`xrisalis.simulate.sample_photons`, with
+        ``src_id`` the layer index (names in :attr:`layer_names`).
+        """
+        import xrimodel as xm
+
+        rng = np.random.default_rng() if rng is None else rng
+        lo, hi = np.asarray(arf.energ_lo, float), np.asarray(arf.energ_hi, float)
+        areas = np.array([np.asarray(resp, float) for _, resp in arf.per_baseline])
+        a_max = float(areas.sum(axis=0).max())
+        ph = xm.sample_photons(self.model, 0.0, float(exposure), area=a_max, rng=rng)
+        e = np.asarray(ph.energy, float)
+        row = np.searchsorted(hi, e, side="right")
+        inside = (e >= lo[0]) & (row < hi.size)
+        row = np.where(inside, row, 0)
+        cum = np.cumsum(areas[:, row], axis=0) / a_max          # (n_baselines, N)
+        u = rng.uniform(0.0, 1.0, e.size)
+        bid = np.argmax(u[None, :] < cum, axis=0)
+        keep = inside & (u < cum[-1])
+        return {
+            "time": np.asarray(ph.time, float)[keep],
+            "energy_kev": e[keep],
+            "ra_deg": np.asarray(ph.x, float)[keep] / UAS_PER_DEG,
+            "dec_deg": np.asarray(ph.y, float)[keep] / UAS_PER_DEG,
+            "src_id": np.asarray(ph.layer, np.int32)[keep],
+            "baseline_id": bid[keep].astype(np.int16),
+        }
+
+    def positions_deg(self):
+        """(m, 2) flux centroids [ra_deg, dec_deg] offsets of the layers."""
+        out = []
+        for layer in self.model.layers:
+            if getattr(layer, "grid", None) is None:
+                x, y = getattr(layer, "x", 0.0), getattr(layer, "y", 0.0)
+                if np.ndim(x):
+                    x, y = float(np.mean(x)), float(np.mean(y))
+            else:
+                gx, gy = layer.grid.centres()
+                w = _layer_weights(layer)
+                x, y = float(np.sum(w * gx)), float(np.sum(w * gy))
+            out.append((x / UAS_PER_DEG, y / UAS_PER_DEG))
+        return np.array(out)
+
+    def fluxes(self):
+        """Mean photon flux per layer [photon/s/cm^2] (unabsorbed for SpecMaps)."""
+        return np.array([layer.mean_photon_flux() for layer in self.model.layers])
+
+
+def _layer_weights(layer):
+    """Normalised per-pixel flux weights of a gridded xrimodel layer."""
+    if hasattr(layer, "image") and layer.image is not None:
+        w = np.asarray(layer.image, float)
+    elif hasattr(layer, "maps"):
+        w = np.asarray(layer.maps["NORM"], float)
+    else:
+        w = np.asarray(layer.bin_flux(), float).sum(axis=0)
+    return w / w.sum()
+
+
+def from_xrimodel(model):
+    """Source from an xrimodel :class:`~xrimodel.Model` or file (see :class:`XrimodelSource`)."""
+    return XrimodelSource(model)

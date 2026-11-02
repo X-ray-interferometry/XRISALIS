@@ -1,8 +1,9 @@
 """Observation pointing / attitude models.
 
 The simulator consumes an attitude stream: a ``(T, 3)`` array of
-``(pitch, yaw, roll)`` in **radians**, indexed by integer time-step (built by
-:meth:`xrisalis.instrument.Interferometer.gen_pointing`). ``pitch`` and ``yaw``
+``(pitch, yaw, roll)`` in **radians**, sampled every ``time_step`` seconds (built
+by :meth:`xrisalis.instrument.Interferometer.gen_pointing`). Each photon sees the
+attitude interpolated at its own arrival time (:func:`attitude_at`). ``pitch`` and ``yaw``
 are the boresight offsets along the two tangent-plane axes (the same axes as a
 source's sky offset, i.e. ``pitch`` runs with declination and ``yaw`` with right
 ascension); ``roll`` is the rotation about the boresight that the aperture
@@ -279,3 +280,28 @@ def attitude_index(times, time_step=1.0, n_rows=None):
     else:
         idx = np.maximum(idx, 0)
     return idx
+
+
+def attitude_at(stream, time_step, times):
+    """Attitude ``(N, 3)`` [rad] at each photon time, interpolated in the stream.
+
+    The stream has one row every ``time_step`` seconds (row ``k`` at
+    ``t = k * time_step``). Each column is linearly interpolated at the photon
+    times and held at the end values outside the stream, so the attitude a
+    photon sees is that of its own arrival time rather than of the row it falls
+    in. Roll is unwrapped before interpolating, so a stream that wraps at 2 pi
+    interpolates correctly. A constant column is returned exactly.
+    """
+    stream = np.atleast_2d(np.asarray(stream, dtype=float))
+    ts = float(time_step)
+    if not ts > 0:
+        raise ValueError(f"time_step must be positive; got {time_step}")
+    t = np.asarray(times, dtype=float)
+    grid = np.arange(stream.shape[0], dtype=float) * ts
+    cols = []
+    for k in range(stream.shape[1]):
+        c = stream[:, k]
+        if k == 2:
+            c = np.unwrap(c)
+        cols.append(np.interp(t, grid, c))
+    return np.column_stack(cols) if cols else np.zeros((t.size, 0))
