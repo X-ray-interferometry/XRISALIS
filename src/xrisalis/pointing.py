@@ -4,9 +4,11 @@ The simulator consumes an attitude stream: a ``(T, 3)`` array of
 ``(pitch, yaw, roll)`` in **radians**, sampled every ``time_step`` seconds (built
 by :meth:`xrisalis.instrument.Interferometer.gen_pointing`). Each photon sees the
 attitude interpolated at its own arrival time (:func:`attitude_at`). ``pitch`` and ``yaw``
-are the boresight offsets along the two tangent-plane axes (the same axes as a
-source's sky offset, i.e. ``pitch`` runs with declination and ``yaw`` with right
-ascension); ``roll`` is the rotation about the boresight that the aperture
+are the boresight offsets North and East on the tangent plane at the
+observation's nominal pointing (``PhotonList.ra_pnt``, ``dec_pnt``; see
+:mod:`xrisalis.coords`), the same axes as the sources' offsets, so ``(0, 0)``
+stares at the nominal pointing. To point at a given sky position use
+:func:`xrisalis.coords.sky_offset_deg`. ``roll`` is the rotation about the boresight that the aperture
 sweeps to build uv coverage.
 
 A :class:`Pointing` supplies the **boresight** ``(pitch, yaw)`` as a function of
@@ -17,7 +19,8 @@ roll and the roller is skipped.
 
 Three ways to specify a pointing:
 
-* :func:`constant_pointing` — a fixed stare (the default is on-axis, ``0, 0``).
+* :func:`constant_pointing` — a fixed stare (the default is ``0, 0``: the
+  nominal pointing).
 * :func:`pointing_from_function` — ``f(t_seconds)`` returning the boresight
   (and optionally roll) over time; use for a smooth analytic drift/dither.
 * :func:`pointing_from_file` — a tabulated timeline (FITS table or text),
@@ -191,7 +194,8 @@ def pointing_from_file(path, degrees=True):
     columns (and an optional roll column):
 
     * time  : ``TIME`` (or ``T``), in seconds;
-    * pitch : ``PITCH`` (or ``DEC``);  yaw : ``YAW`` (or ``RA``);
+    * pitch : ``PITCH`` (or ``DEC``);  yaw : ``YAW`` (or ``RA``): North and East
+      offsets from the nominal pointing (not absolute coordinates);
     * roll  : ``ROLL`` (optional; if present it supplies roll and bypasses the
       roller).
 

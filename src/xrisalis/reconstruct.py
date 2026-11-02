@@ -10,9 +10,9 @@ import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
-from .config import (H, C, KEV, RAD2UAS, ARCSEC2RAD, RAD2ARCSEC, DEG2RAD,
-                     RAD2DEG)
+from .config import H, C, KEV, RAD2UAS, ARCSEC2RAD, RAD2ARCSEC
 from .units import to_arcsec, to_kev, to_radec_deg
+from .coords import tangent_offsets, tangent_to_sky
 
 
 def _resolve_fov_arcsec(fov_arcsec, events, instrument, energy_kev=None,
@@ -442,7 +442,9 @@ def _resolve_phase_center(events, phase_center=None):
     ``None`` (default) is the observation's mean recorded pointing
     (:meth:`~xrisalis.io.EventList.mean_boresight`). Otherwise a sky position
     in the same convention as source positions: ``(ra_deg, dec_deg)`` (bare
-    numbers are degrees, Quantities are converted) or a SkyCoord.
+    numbers are degrees, Quantities are converted) or a SkyCoord, projected
+    onto the tangent plane at the nominal pointing (``events.ra_pnt``,
+    ``events.dec_pnt``) like the sources and the boresight.
     """
     if phase_center is None:
         return events.mean_boresight()
@@ -450,7 +452,11 @@ def _resolve_phase_center(events, phase_center=None):
         ra, dec = to_radec_deg(phase_center[0], phase_center[1])
     else:
         ra, dec = to_radec_deg(phase_center)
-    return np.array([float(dec), float(ra)]) * DEG2RAD     # (pitch, yaw)
+    east, north = tangent_offsets(ra, dec, events.ra_pnt, events.dec_pnt)
+    if not (np.isfinite(east) and np.isfinite(north)):
+        raise ValueError("phase_center is on the far side of the sky from the "
+                         "nominal pointing")
+    return np.array([float(north), float(east)])          # (pitch, yaw)
 
 
 def _boresight_offsets(events, stream, correct_boresight, phase_center):
@@ -474,9 +480,10 @@ def _boresight_offsets(events, stream, correct_boresight, phase_center):
     return off, centre
 
 
-def _phase_center_deg(centre):
+def _phase_center_deg(centre, events):
     """``(pitch, yaw)`` [rad] -> ``(ra_deg, dec_deg)`` for metadata."""
-    return float(centre[1] * RAD2DEG), float(centre[0] * RAD2DEG)
+    ra, dec = tangent_to_sky(centre[1], centre[0], events.ra_pnt, events.dec_pnt)
+    return float(ra), float(dec)
 
 
 def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
@@ -626,7 +633,7 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
 
     meta["n_events"] = int(e.size)
     meta["deconvolved"] = bool(deconvolving)
-    meta["phase_center_deg"] = _phase_center_deg(centre)
+    meta["phase_center_deg"] = _phase_center_deg(centre, events)
     return img, span, uv, meta
 
 
@@ -725,7 +732,7 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
             "combine": combine, "band_spans_uas": spans,
             "pixel_scale_uas": span_uas / target[0],
             "phase_center_deg": _phase_center_deg(
-                _resolve_phase_center(events, phase_center))}
+                _resolve_phase_center(events, phase_center), events)}
     return combined, span_uas, band_images, meta
 
 
@@ -1093,7 +1100,7 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
                                                         (int, float))
                              else str(fringe_taper)),
             "baselines_used": used, "matched": matched_sigma is not None,
-            "phase_center_deg": _phase_center_deg(_centre)}
+            "phase_center_deg": _phase_center_deg(_centre, events)}
     return RGBImage(channels=channels, span_uas=span_uas,
                     pixel_scale_uas=pixel_scale_uas, bands=bands,
                     counts=counts, beams=beams, beam_sigmas_uas=sigmas,

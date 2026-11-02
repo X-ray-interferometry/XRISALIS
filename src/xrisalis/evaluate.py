@@ -25,6 +25,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .units import to_uas
+from .coords import nominal_pointing, tangent_offsets
+
+RAD2UAS = 180.0 / np.pi * 3600e6
 
 
 # --------------------------------------------------------------------- coords
@@ -45,22 +48,33 @@ def _uas_to_rc(alpha, delta, span_uas, npix):
 
 
 # ------------------------------------------------------------- true sources
-def true_sources(source):
+def _offsets_uas(ra_deg, dec_deg, center_deg):
+    east, north = tangent_offsets(ra_deg, dec_deg, *center_deg)
+    return np.column_stack((east * RAD2UAS, north * RAD2UAS))
+
+
+def true_sources(source, center_deg=None):
     """Extract (positions_uas (m,2)=[alpha,delta], fluxes (m,)) from a source.
 
     ``source`` may be a :class:`xrisalis.sources.SourceModel` (uses component
     centroids + integrated fluxes), a SimputSource (ra_deg/dec_deg + spectra), or
-    a plain ``(positions_uas, fluxes)`` tuple.
+    a plain ``(positions_uas, fluxes)`` tuple. Positions are tangent-plane
+    offsets (East, North) from ``center_deg`` = ``(ra, dec)`` [deg], the image's
+    phase centre (``meta['phase_center_deg']`` from
+    :func:`xrisalis.reconstruct.reconstruct`); default: the source's nominal
+    pointing (:func:`xrisalis.coords.nominal_pointing`), which is also the
+    default image centre.
     """
     if isinstance(source, tuple):
         pos, flux = source
         return np.asarray(pos, float), np.asarray(flux, float)
+    if center_deg is None:
+        center_deg = nominal_pointing(source)
     if hasattr(source, "positions_deg") and hasattr(source, "fluxes"):
         pos_deg = np.atleast_2d(source.positions_deg())    # (m,2) [ra,dec] deg
-        return pos_deg * 3600e6, np.asarray(source.fluxes(), float)
-    alpha = np.asarray(source.ra_deg, float) * 3600e6      # deg -> uas
-    delta = np.asarray(source.dec_deg, float) * 3600e6
-    pos = np.column_stack((alpha, delta))
+        return (_offsets_uas(pos_deg[:, 0], pos_deg[:, 1], center_deg),
+                np.asarray(source.fluxes(), float))
+    pos = _offsets_uas(source.ra_deg, source.dec_deg, center_deg)
     spectra = getattr(source, "spectra", None)
     if spectra:
         # trapezoidal integral of each spectrum (np.trapz renamed in numpy 2.x)
@@ -177,7 +191,8 @@ class EvaluationResult:
 
 
 # ------------------------------------------------------------- main entry
-def evaluate(image, span_uas, source=None, n_sources=2, min_sep_uas=None):
+def evaluate(image, span_uas, source=None, n_sources=2, min_sep_uas=None,
+             center_deg=None):
     """Evaluate a reconstructed image against the true source model.
 
     Parameters
@@ -188,6 +203,7 @@ def evaluate(image, span_uas, source=None, n_sources=2, min_sep_uas=None):
         The truth. If None, only source-agnostic metrics (peaks, separation,
         dynamic range) are returned; truth-relative fields are NaN.
     n_sources : int                number of peaks to recover.
+    center_deg : (ra, dec) or None  image phase centre [deg] (see true_sources).
 
     Returns
     -------
@@ -220,7 +236,7 @@ def evaluate(image, span_uas, source=None, n_sources=2, min_sep_uas=None):
     fidelity = np.nan; resid = np.nan
     fwhm = _estimate_fwhm_uas(im, span_uas)
     if source is not None:
-        tpos, tflux = true_sources(source)
+        tpos, tflux = true_sources(source, center_deg)
         if len(tpos) >= 2:
             order = np.argsort(tflux)[::-1]
             true_sep = float(np.hypot(*(tpos[order[0]] - tpos[order[1]])))

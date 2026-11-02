@@ -14,7 +14,8 @@ from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 from dataclasses import dataclass, field
 import numpy as np
-from .config import KEV, DEG2RAD, H, C
+from .config import KEV, H, C
+from .coords import tangent_offsets
 
 
 # ==========================================================================
@@ -109,8 +110,12 @@ class PhotonList:
 
     @property
     def loc_rad(self):
-        """(N,2) sky offset [rad] as [dec, ra] (matches fringe/off-axis math)."""
-        return np.column_stack((self.dec_deg * DEG2RAD, self.ra_deg * DEG2RAD))
+        """(N,2) tangent-plane offset [rad] as [north, east] from the nominal
+        pointing ``(ra_pnt, dec_pnt)`` (gnomonic, see :mod:`xrisalis.coords`), on
+        the same axes as the boresight ``(pitch, yaw)``."""
+        east, north = tangent_offsets(self.ra_deg, self.dec_deg,
+                                      self.ra_pnt, self.dec_pnt)
+        return np.column_stack((north, east))
 
     # --- io ------------------------------------------------------------------
     def to_hdu(self):
@@ -127,8 +132,8 @@ class PhotonList:
         hdr["EXTNAME"] = "PHOTONS"
         if self.exposure is not None:
             hdr["EXPOSURE"] = (float(self.exposure), "Exposure time [s]")
-        hdr["RA_PNT"] = (float(self.ra_pnt), "Pointing RA [deg]")
-        hdr["DEC_PNT"] = (float(self.dec_pnt), "Pointing DEC [deg]")
+        hdr["RA_PNT"] = (float(self.ra_pnt), "Nominal pointing RA [deg]")
+        hdr["DEC_PNT"] = (float(self.dec_pnt), "Nominal pointing DEC [deg]")
         return fits.BinTableHDU.from_columns(cols, header=hdr)
 
     def write(self, path, overwrite=True):
@@ -167,6 +172,9 @@ class EventList:
     ra_deg: np.ndarray = None
     dec_deg: np.ndarray = None
     pointing: np.ndarray = None    # (T,3) pitch,yaw,roll [rad]; row k at t = k*time_step
+                                   # (pitch, yaw) = (north, east) offsets from (ra_pnt, dec_pnt)
+    ra_pnt: float = 0.0            # nominal pointing = tangent point [deg]
+    dec_pnt: float = 0.0
     time_step: float = 1.0         # attitude sampling interval [s] (POINTING row spacing)
     ebounds: dict = None           # {'CHANNEL','E_MIN','E_MAX'}
     exposure: float = None
@@ -384,6 +392,8 @@ class EventList:
         if self.fov is not None and np.isfinite(self.fov):
             hdr["FOV"] = (float(self.fov), "Derived imaging FoV, half-angle [rad]")
         hdr["TIMESTEP"] = (float(self.time_step), "Attitude row spacing [s]")
+        hdr["RA_PNT"] = (float(self.ra_pnt), "Nominal pointing RA [deg]")
+        hdr["DEC_PNT"] = (float(self.dec_pnt), "Nominal pointing DEC [deg]")
         for k, v in self.header_extra.items():
             hdr[k] = v
         return fits.BinTableHDU.from_columns(cols, header=hdr)
@@ -459,6 +469,7 @@ class EventList:
                 dec_deg=d["DEC"] if "DEC" in names else None,
                 pointing=pointing, time_step=time_step, ebounds=ebounds,
                 exposure=hdr.get("EXPOSURE"), fov=hdr.get("FOV"),
+                ra_pnt=hdr.get("RA_PNT", 0.0), dec_pnt=hdr.get("DEC_PNT", 0.0),
                 slat_id=d["SLAT_ID"] if "SLAT_ID" in names else None,
                 chip_id=d["CHIP_ID"] if "CHIP_ID" in names else None,
                 chipx=d["CHIPX"] if "CHIPX" in names else None,

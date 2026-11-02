@@ -33,6 +33,12 @@ from .io import (
     read_fits_image,
     resolve_reference,
 )
+from .coords import (
+    nominal_pointing,
+    sky_offset_deg,
+    tangent_offsets,
+    tangent_to_sky,
+)
 from .pointing import (
     Pointing,
     as_pointing,
@@ -125,6 +131,10 @@ __all__ = [
     "Spectrum",
     "as_pointing",
     "attitude_at",
+    "nominal_pointing",
+    "sky_offset_deg",
+    "tangent_offsets",
+    "tangent_to_sky",
     "beam_sigma_uas",
     "coherence_envelope",
     "colormaps",

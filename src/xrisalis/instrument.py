@@ -350,7 +350,8 @@ class Interferometer:
         :mod:`xrisalis.pointing`). Roll is then swept by ``self.roller`` unless
         the pointing model itself supplies a roll column
         (``provides_roll=True``). Finally ``self.wobble`` is applied if set.
-        With no pointing model the boresight stays at (0, 0).
+        With no pointing model the boresight stays at (0, 0): the nominal
+        pointing of the photon list (see :mod:`xrisalis.coords`).
         """
         T = int(float(t_exp) / float(self.time_step)) + 2
         attitude = np.zeros((T, 3))

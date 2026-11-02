@@ -27,6 +27,9 @@ import numpy as np
 
 from .io import SimputSource, read_fits_image, read_fits_cube
 from .units import to_deg, to_arcsec, to_kev, to_radec_deg, is_skycoord
+from .coords import tangent_to_sky
+
+ARCSEC2RAD = np.pi / (180.0 * 3600.0)
 
 DEG_PER_ARCSEC = 1.0 / 3600.0
 
@@ -177,8 +180,9 @@ class ImageMorphology(Morphology):
     """Sky brightness from a 2-D image sampled as a probability map.
 
     ``scale_arcsec`` is the angular size of the image's largest axis; ``center``
-    is the (RA, Dec) of the image centre in degrees. Columns map to +RA (alpha),
-    rows to +Dec (delta).
+    is the (RA, Dec) of the image centre in degrees. The image lies on the
+    tangent plane at its centre: columns map to East (+RA), rows to North
+    (+Dec), with pixels of equal angular size along both axes.
     """
     def __init__(self, image, scale_arcsec, center_deg=(0.0, 0.0),
                  rotation_deg=0.0):
@@ -205,9 +209,8 @@ class ImageMorphology(Morphology):
         jc = rng.uniform(-0.5, 0.5, n)
         alpha_as = (cols + jc - (self.nx - 1) / 2.0) * self.pix_arcsec
         delta_as = (rows + jr - (self.ny - 1) / 2.0) * self.pix_arcsec
-        ra = self.center_deg[0] + alpha_as * DEG_PER_ARCSEC
-        dec = self.center_deg[1] + delta_as * DEG_PER_ARCSEC
-        return ra, dec
+        return tangent_to_sky(alpha_as * ARCSEC2RAD, delta_as * ARCSEC2RAD,
+                              *self.center_deg)
 
     @property
     def centroid_deg(self):
@@ -216,8 +219,8 @@ class ImageMorphology(Morphology):
         col = (w * xs).sum(); row = (w * ys).sum()
         a = (col - (self.nx - 1) / 2.0) * self.pix_arcsec
         d = (row - (self.ny - 1) / 2.0) * self.pix_arcsec
-        return (self.center_deg[0] + a * DEG_PER_ARCSEC,
-                self.center_deg[1] + d * DEG_PER_ARCSEC)
+        ra, dec = tangent_to_sky(a * ARCSEC2RAD, d * ARCSEC2RAD, *self.center_deg)
+        return float(ra), float(dec)
 
 
 # ============================================================================
@@ -684,7 +687,7 @@ def load_source(path, kind="auto", **overrides):
 # ============================================================================
 # xrimodel models (extended SIMPUT): spectra per pixel, timing, delays
 # ============================================================================
-UAS_PER_DEG = 3600e6
+UAS_PER_RAD = 180.0 / np.pi * 3600e6
 
 
 class XrimodelSource(SourceModel):
@@ -697,10 +700,9 @@ class XrimodelSource(SourceModel):
     and folded through the ARF by exact thinning (see :meth:`sample_arf`).
 
     Positions: xrimodel works in tangent-plane offsets (uas, x East, y North)
-    from the model's reference position. They are returned as small RA/Dec
-    offsets in degrees around (0, 0) (``ra_deg = x / 3.6e9``), the frame the
-    off-axis and fringe maths here expects; the model's own reference
-    position is kept in :attr:`reference_deg`.
+    from the model's reference position :attr:`reference_deg`; photons are
+    returned at their absolute RA/Dec (inverse gnomonic projection), and the
+    reference is the default nominal pointing of :func:`generate_photons`.
 
     Parameters
     ----------
@@ -748,17 +750,20 @@ class XrimodelSource(SourceModel):
         u = rng.uniform(0.0, 1.0, e.size)
         bid = np.argmax(u[None, :] < cum, axis=0)
         keep = inside & (u < cum[-1])
+        ra, dec = tangent_to_sky(np.asarray(ph.x, float) / UAS_PER_RAD,
+                                 np.asarray(ph.y, float) / UAS_PER_RAD,
+                                 self.model.ra, self.model.dec)
         return {
             "time": np.asarray(ph.time, float)[keep],
             "energy_kev": e[keep],
-            "ra_deg": np.asarray(ph.x, float)[keep] / UAS_PER_DEG,
-            "dec_deg": np.asarray(ph.y, float)[keep] / UAS_PER_DEG,
+            "ra_deg": ra[keep],
+            "dec_deg": dec[keep],
             "src_id": np.asarray(ph.layer, np.int32)[keep],
             "baseline_id": bid[keep].astype(np.int16),
         }
 
     def positions_deg(self):
-        """(m, 2) flux centroids [ra_deg, dec_deg] offsets of the layers."""
+        """(m, 2) flux centroids [ra_deg, dec_deg] of the layers."""
         out = []
         for layer in self.model.layers:
             if getattr(layer, "grid", None) is None:
@@ -769,8 +774,9 @@ class XrimodelSource(SourceModel):
                 gx, gy = layer.grid.centres()
                 w = _layer_weights(layer)
                 x, y = float(np.sum(w * gx)), float(np.sum(w * gy))
-            out.append((x / UAS_PER_DEG, y / UAS_PER_DEG))
-        return np.array(out)
+            out.append(tangent_to_sky(x / UAS_PER_RAD, y / UAS_PER_RAD,
+                                      self.model.ra, self.model.dec))
+        return np.array(out, float)
 
     def fluxes(self):
         """Mean photon flux per layer [photon/s/cm^2] (unabsorbed for SpecMaps)."""

@@ -107,8 +107,20 @@ recognises xrimodel files, and they combine with the built-in sources:
    events = xs.redistribute(photons, instrument, rmf, seed=2)
 
 xrimodel draws the photons itself and assigns them to baselines by thinning against the
-ARF. Its tangent-plane offsets (uas, x East, y North) become RA/Dec offsets in degrees
-around (0, 0); the model's own reference position is ``src.reference_deg``.
+ARF. Its tangent-plane offsets (uas, x East, y North) are returned as absolute RA/Dec
+around the model's reference position, ``src.reference_deg``.
+
+Sky coordinates
+---------------
+
+Sources are placed at absolute RA/Dec. ``generate_photons`` records a nominal pointing
+(``pointing=(ra, dec)``; default: the source's own position), and every position is
+projected onto the tangent plane there (gnomonic; ``xrisalis.coords``), so offsets are
+true angles at any declination and across RA = 0. The attitude stream's ``(pitch, yaw)``
+are North and East offsets from the nominal pointing: ``(0, 0)`` stares at it, and
+``xrisalis.sky_offset_deg(ra, dec, ra0, dec0)`` gives the offset that points at another
+position. ``reconstruct(phase_center=(ra, dec))`` and ``evaluate(..., center_deg=...)``
+take absolute coordinates.
 
 Each photon sees the attitude (pitch, yaw, roll) interpolated at its own arrival time
 (``xrisalis.pointing.attitude_at``), both in ``redistribute`` and in the per-event roll

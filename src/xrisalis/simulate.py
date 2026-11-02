@@ -11,7 +11,8 @@ import scipy.special as sps
 import scipy.stats as sampler
 from .config import KEV, H, C
 from .io import PhotonList, EventList
-from .units import to_seconds
+from .units import to_seconds, to_radec_deg, is_skycoord
+from .coords import nominal_pointing
 from .pointing import attitude_at
 
 
@@ -545,7 +546,7 @@ def _sample_mixed(source, arf, exposure, rng):
 
 
 def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
-                     pointing=(0.0, 0.0), seed=None):
+                     pointing=None, seed=None):
     """High-level generate stage: -> :class:`~xrisalis.io.PhotonList`.
 
     ``source`` may be any :class:`xrisalis.sources.SourceModel` (point, image,
@@ -554,8 +555,20 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
     (or a combination containing one), which samples its own photons, or a
     SimputSource / object exposing ``ra_deg``, ``dec_deg``, ``spectra`` (the
     point-catalog fast path).
+
+    ``pointing`` is the nominal pointing ``(ra, dec)`` (degrees, Quantities or a
+    SkyCoord): the tangent point of all off-axis maths, which the boresight
+    ``(pitch, yaw)`` of the attitude stream is measured from (see
+    :mod:`xrisalis.coords`). Default: the source's own position (an xrimodel
+    model's reference, else the centre of its positions).
     """
     exposure = to_seconds(exposure)                  # accept a time Quantity
+    if pointing is None:
+        ra_pnt, dec_pnt = nominal_pointing(source)
+    elif is_skycoord(pointing):
+        ra_pnt, dec_pnt = to_radec_deg(pointing)
+    else:
+        ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     if rng is None:
         rng = np.random.default_rng(seed)
     if _needs_own_sampler(source):                    # xrimodel (or a mix with it)
@@ -570,7 +583,7 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
         time=d["time"], energy_kev=d["energy_kev"],
         ra_deg=d["ra_deg"], dec_deg=d["dec_deg"],
         src_id=d["src_id"], baseline_id=d["baseline_id"],
-        exposure=exposure, ra_pnt=pointing[0], dec_pnt=pointing[1],
+        exposure=exposure, ra_pnt=float(ra_pnt), dec_pnt=float(dec_pnt),
         meta={"seed": seed},
     )
 
@@ -753,6 +766,7 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
         dety=dety, detz=detz,
         baseline_id=bidx, pi=pi, ra_deg=ra_v, dec_deg=dec_v,
         pointing=attitude, time_step=float(instrument.time_step),
+        ra_pnt=float(photons.ra_pnt), dec_pnt=float(photons.dec_pnt),
         ebounds=rmf.ebounds_dict,
         exposure=photons.exposure, fov=fov_img, slat_id=slat_id,
         chip_id=place["chip_id"], chipx=place["chipx"], chipy=place["chipy"],
