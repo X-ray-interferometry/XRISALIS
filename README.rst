@@ -110,6 +110,21 @@ xrimodel draws the photons itself and assigns them to baselines by thinning agai
 ARF. Its tangent-plane offsets (uas, x East, y North) are returned as absolute RA/Dec
 around the model's reference position, ``src.reference_deg``.
 
+``xrisalis.recipes`` runs the whole chain as a real observation would be analysed, and
+gives what to compare the result with (the model convolved with the dirty beam of a point
+source with the model's spectrum, reconstructed the same way):
+
+.. code-block:: python
+
+   from xrisalis import recipes
+
+   obs = recipes.observe(model, 2e4, fov_arcsec=0.0012)   # detected energies, deconvolved
+   beam = recipes.dirty_beam(obs, 2e4)                    # unit peak, integrates to ~0
+   setup = recipes.Setup.from_files("my_arf.fits", "my_rmf.fits")
+   obs2 = recipes.observe(model, 2e4, fov_arcsec=0.0012, setup=setup)
+
+The default ``setup`` is the bundled 10-baseline ARF and RMF, rolling half a turn.
+
 Sky coordinates
 ---------------
 
