@@ -162,43 +162,48 @@ def dirty_beam(obs, exposure, total_flux=0.1, seed=100, spectrum=None):
     return pt["image"] / pt["image"].max()
 
 
-def model_image(model, grid, lo=0.5, hi=12.0, nbin=60, setup=None):
-    """The model's detected count rate per pixel (counts/s): every layer's photon flux,
-    absorbed as the sampler absorbs it, weighted by the ARF (summed over baselines) in
-    ``nbin`` bins between ``lo`` and ``hi`` keV. Point layers (no grid, or a one-pixel
-    SpecMap) go to the pixel at their position. On ``grid`` (a ``RegularGrid``), East to
-    the left; for :func:`predicted`."""
+def _bin_onto(img, grid, x, y, w):
+    """Add weights ``w`` at sky offsets (x East, y North; uas) to the pixels of ``grid``
+    (column index increasing towards the West), dropping those outside."""
+    ix = np.floor((grid.x0 - np.asarray(x, float)) / grid.scale + grid.nx / 2).astype(int)
+    iy = np.floor((np.asarray(y, float) - grid.y0) / grid.scale + grid.ny / 2).astype(int)
+    ok = (ix >= 0) & (ix < grid.nx) & (iy >= 0) & (iy < grid.ny)
+    np.add.at(img, (iy[ok], ix[ok]), np.broadcast_to(w, ix.shape)[ok])
+
+
+def pixel_rates(layer, lo=0.5, hi=12.0, nbin=60, setup=None):
+    """A layer's detected count rate (counts/s) per layer pixel, absorbed as the sampler
+    absorbs it and weighted by the ARF (summed over baselines) in ``nbin`` bins between
+    ``lo`` and ``hi`` keV. Returns (x, y, rate): pixel centres (uas, x East) and rates;
+    a point layer is one pixel at its position."""
     arf = (bundled() if setup is None else setup).arf
     edges = np.linspace(lo, hi, nbin + 1)
-    ec = 0.5 * (edges[1:] + edges[:-1])
-    area = np.interp(ec, arf.energy_mid, arf.total)
+    area = np.interp(0.5 * (edges[1:] + edges[:-1]), arf.energy_mid, arf.total)
+    if hasattr(layer, "maps"):
+        rate = np.zeros(layer.grid.n)
+        for k in range(nbin):
+            rate += xm.specmap_projection(layer, edges=edges[k:k + 2])[1] * area[k]
+        return (*layer.grid.centres(), rate)
+    sp = layer.spectrum
+    cum = np.concatenate([[0.0], np.cumsum(sp.values * sp.widths)])
+    r = float(np.sum(np.diff(np.interp(edges, sp.edges, cum)) * area))
+    if layer.grid is not None and getattr(layer.grid, "n", 1) > 1:
+        w = np.asarray(layer.image, float)
+        return (*layer.grid.centres(), r * w / w.sum())
+    return np.array([layer.x]), np.array([layer.y]), np.array([r])
+
+
+def model_image(model, grid, lo=0.5, hi=12.0, nbin=60, setup=None, layers=None):
+    """The model's detected count rate per pixel (counts/s, :func:`pixel_rates`) on
+    ``grid`` (a ``RegularGrid``, East to the left; for :func:`predicted`). Each layer pixel
+    (quadtree leaf, regular pixel or point) adds its rate to the ``grid`` pixel containing
+    its centre, so layers on any grid can be imaged on any other; pixels larger than
+    ``grid``'s land in one pixel. ``layers`` optionally selects layers by name (a callable
+    ``keep(name)``)."""
     img = np.zeros((grid.ny, grid.nx))
     for layer in model.layers:
-        if hasattr(layer, "maps"):
-            spec, _ = xm.specmap_projection(layer, edges=edges)
-            if layer.grid.n > 1:
-                # per-pixel absorbed spectra, ARF-weighted
-                rate = np.zeros(layer.grid.n)
-                for k in range(nbin):
-                    rate += xm.specmap_projection(layer, edges=edges[k:k + 2])[1] * area[k]
-                img += grid.to_image(rate)
-                continue
-            r = float(np.sum(spec.values * spec.widths * area))
-            px, py = (float(c[0]) for c in layer.grid.centres())
-        else:
-            sp = layer.spectrum
-            cum = np.concatenate([[0.0], np.cumsum(sp.values * sp.widths)])
-            r = float(np.sum(np.diff(np.interp(edges, sp.edges, cum)) * area))
-            if layer.grid is not None and getattr(layer.grid, "n", 1) > 1:
-                w = np.asarray(layer.image, float)
-                img += grid.to_image(r * w / w.sum())
-                continue
-            px, py = layer.x, layer.y
-        # nearest pixel (column index increases towards the West)
-        ix = int(np.floor((grid.x0 - px) / grid.scale + grid.nx / 2))
-        iy = int(np.floor((py - grid.y0) / grid.scale + grid.ny / 2))
-        if 0 <= ix < grid.nx and 0 <= iy < grid.ny:
-            img[iy, ix] += r
+        if layers is None or layers(layer.name):
+            _bin_onto(img, grid, *pixel_rates(layer, lo, hi, nbin, setup))
     return img
 
 
@@ -206,7 +211,8 @@ def on_grid(image, half_uas, obs):
     """Resample a model ``image`` spanning +-``half_uas`` (East to the left, i.e. column 0
     is East) onto the pixel grid of ``obs`` (nearest pixel; zero outside the image)."""
     n = obs["image"].shape[0]
-    c = (np.arange(n) - n / 2 + 0.5) * obs["span"] / n           # pixel centres (uas, East = +)
+    c = (np.arange(n) - n / 2) * obs["span"] / n    # pixel centres (uas, East = +): the
+    # reconstruction's phase centre is pixel n // 2 (the IFFT's zero), not a pixel corner
     ny, nx = image.shape
     ix = np.round((half_uas - c) / (2 * half_uas) * nx - 0.5).astype(int)
     iy = np.round((c + half_uas) / (2 * half_uas) * ny - 0.5).astype(int)
@@ -218,9 +224,14 @@ def on_grid(image, half_uas, obs):
 
 def predicted(image, half_uas, obs, beam):
     """``image`` (a model, see :func:`on_grid`) convolved with ``beam``: what the
-    reconstruction should show without photon noise."""
+    reconstruction should show without photon noise. The beam is centred on its peak (the
+    source's pixel), not on the array's middle: on the even-sized grids of
+    :func:`pixels` those differ by up to a pixel."""
     from scipy.signal import fftconvolve
-    return fftconvolve(on_grid(image, half_uas, obs), beam, mode="same")
+    img = on_grid(image, half_uas, obs)
+    full = fftconvolve(img, beam, mode="full")
+    py, px = np.unravel_index(np.argmax(beam), beam.shape)
+    return full[py:py + img.shape[0], px:px + img.shape[1]]
 
 
 def show(ax, obs, unit=1.0, lim=None, gamma=0.5, label=None, cmap="magma"):
@@ -229,8 +240,10 @@ def show(ax, obs, unit=1.0, lim=None, gamma=0.5, label=None, cmap="magma"):
     from matplotlib.colors import PowerNorm
 
     img, span = obs["image"], obs["span"]
-    h = span / 2 / unit
-    im = ax.imshow(np.clip(img / img.max(), 0, None), origin="lower", extent=[-h, h, -h, h],
+    h, p = span / 2 / unit, span / img.shape[0] / unit
+    # pixel k is centred at (k - n/2) * pixel, so the phase centre is a pixel centre
+    ext = [-h - p / 2, h - p / 2, -h - p / 2, h - p / 2]
+    im = ax.imshow(np.clip(img / img.max(), 0, None), origin="lower", extent=ext,
                    cmap=cmap, norm=PowerNorm(gamma, vmin=0, vmax=1))
     ax.invert_xaxis()
     if lim is not None:
@@ -244,5 +257,5 @@ def show(ax, obs, unit=1.0, lim=None, gamma=0.5, label=None, cmap="magma"):
 
 
 __all__ = ["PIXEL_UAS", "Setup", "bundled", "dirty_beam", "model_image", "observe", "on_grid",
-           "pixels", "point_source_like", "predicted", "scaled", "show", "subset",
+           "pixel_rates", "pixels", "point_source_like", "predicted", "scaled", "show", "subset",
            "total_spectrum"]
