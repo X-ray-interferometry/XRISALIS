@@ -241,7 +241,7 @@ def arbitrary_fringe_intensity(y, baseline, wavelength, theta):
     """Interferogram of the ``'arbitrary'`` combiner (unnormalized).
 
     ``I(y) = 1 + V cos(2 pi (y - y0) / dy)`` inside the overlap window
-    ``|y + L theta| <= overlap_span/2`` and 0 outside, with fringe period
+    ``|y + L theta| <= overlap_width/2`` and 0 outside, with fringe period
     ``dy = lambda / beam_angle`` and fringe-maximum offset
     ``y0 = -D sin(theta) / (2 sin(beam_angle/2))`` (~ ``-D theta/beam_angle``,
     the same phase convention as the slatted sampler, so reconstruction is
@@ -250,10 +250,9 @@ def arbitrary_fringe_intensity(y, baseline, wavelength, theta):
     y = np.asarray(y, float)
     lam = np.asarray(wavelength, float)
     theta = np.asarray(theta, float)
-    period = lam / baseline.beam_angle
-    y0 = -(baseline.D * np.sin(theta)) / (2 * np.sin(baseline.beam_angle / 2))
-    center = -baseline.L * theta
-    inside = np.abs(y - center) <= baseline.overlap_span / 2.0
+    period = baseline.fringe_spacing(lam)
+    y0 = baseline.fringe_offset(theta)
+    inside = np.abs(y + baseline.L * theta) <= baseline.overlap_width / 2.0
     val = 1.0 + baseline.visibility * np.cos(2 * np.pi * (y - y0) / period)
     return np.where(inside, val, 0.0)
 
@@ -265,7 +264,7 @@ def sample_arbitrary_positions(
 
     Idealized two-beam combiner: fringes of period ``lambda/beam_angle`` and
     contrast ``baseline.visibility``, NO diffraction. The interferogram is cut
-    off at the edges of the overlap window (width ``baseline.overlap_span``,
+    off at the edges of the overlap window (width ``baseline.overlap_width``,
     centered at ``-L theta`` -- the geometric beam walk), and **every** photon is
     placed inside it: there is no vignetting and no photon is wasted. See
     :func:`arbitrary_fringe_intensity` for the pattern.
@@ -284,7 +283,7 @@ def sample_arbitrary_positions(
     if energies_j.size != n:
         raise ValueError("energies_j and thetas must have the same length")
     lam_all = H * C / energies_j
-    half = baseline.overlap_span / 2.0
+    half = baseline.overlap_width / 2.0
     V = baseline.visibility
     y_pos = np.empty(n)
     todo = np.arange(n)
@@ -300,9 +299,8 @@ def sample_arbitrary_positions(
     if todo.size:
         raise RuntimeError(
             f"sample_arbitrary_positions: {todo.size} photon(s) not placed after "
-            f"{max_iter} rounds -- overlap window ({baseline.overlap_span:g} m) "
-            f"is much narrower than a fringe and sits on a dark fringe."
-        )
+            f"{max_iter} rounds -- overlap window ({baseline.overlap_width:g} m) "
+            f"is much narrower than a fringe and sits on a dark fringe.")
     slat_ids = np.zeros(n, dtype=np.int32)
     return (y_pos, slat_ids) if return_slat else y_pos
 
@@ -711,16 +709,14 @@ def simulate_positions(baseline_id, energy_j, theta, baselines, rng=None):
     """Detector fringe-axis positions ``DETY`` [m] + slat index, per photon.
 
     Returns ``(dety, slat_id)``; ``slat_id`` is the comb-patch index each photon
-    landed on (see :func:`sample_detector_positions`), -1 for unplaced photons.
+    landed on (see the baseline's ``sample_dety``), -1 for unplaced photons.
     """
     rng = np.random.default_rng() if rng is None else rng
     dety = np.zeros(baseline_id.size)
     slat_id = np.full(baseline_id.size, -1, dtype=np.int32)
     for k in np.unique(baseline_id):
         sel = baseline_id == k
-        y, s = sample_detector_positions(
-            baselines[int(k)], energy_j[sel], theta[sel], rng=rng, return_slat=True
-        )
+        y, s = baselines[int(k)].sample_dety(energy_j[sel], theta[sel], rng)
         dety[sel] = y
         slat_id[sel] = s
     return dety, slat_id

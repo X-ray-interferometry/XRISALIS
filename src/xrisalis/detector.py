@@ -87,7 +87,7 @@ class Detector:
         Half-size of the sensitive area along the fringe (DETY) axis [m]. When
         given, it caps the illuminated region used in the geometric field of
         view (the fringe packet must land on the physical detector). If None,
-        the mirror's illuminated region (``W * num_pairs``) sets the limit.
+        the baseline's ``footprint`` sets the limit.
     half_extent_cross_m : float, optional
         Half-size along the cross (DETZ) axis [m]. Reserved (DETZ is 0 in v1).
     shape : str
@@ -120,7 +120,7 @@ class Detector:
     ):
         """Build a default focal plane: one chip per baseline, tiled in a strip.
 
-        Each baseline's pattern (fringe extent ``W*num_pairs`` along DETY, shadow
+        Each baseline's pattern (fringe extent ``footprint`` along DETY, shadow
         extent ``Wz`` along DETZ) gets its own chip. Chips are uniform (sized to
         the largest baseline, times ``margin``) and tiled along the cross axis
         (``axis='y'``, the default) with ``gap_m`` between them, centered on the
@@ -131,9 +131,7 @@ class Detector:
         gap_m = _to_m(gap_m)
         bls = instrument.baselines
         # uniform chip size from the widest pattern (+ margin)
-        wy = margin * max(
-            getattr(b, "overlap_span", b.W * b.num_pairs) for b in bls
-        )  # fringe (x) extent
+        wy = margin * max(b.footprint for b in bls)      # fringe (x) extent
         wz = margin * max(getattr(b, "Wz", 1e-2) for b in bls)  # cross (y) extent
         nx = int(math.ceil(wy / pixel_m))
         ny = int(math.ceil(wz / pixel_m))
