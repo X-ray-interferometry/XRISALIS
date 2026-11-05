@@ -8,6 +8,13 @@ source's sky offset, i.e. ``pitch`` runs with declination and ``yaw`` with right
 ascension); ``roll`` is the rotation about the boresight that the aperture
 sweeps to build uv coverage.
 
+Both are **tangent-plane offsets** [rad] from the observation's nominal
+pointing ``(ra_pnt, dec_pnt)`` (set in
+:func:`xrisalis.simulate.generate_photons`; see :mod:`xrisalis.coords`):
+``pitch`` towards North, ``yaw`` towards East, true angles on the sky (no
+``cos(dec)`` factor needed). ``(0, 0)`` stares at the nominal pointing; a dither
+or drift is a small offset from it.
+
 A :class:`Pointing` supplies the **boresight** ``(pitch, yaw)`` as a function of
 time. Roll is filled in by the interferometer's ``roller`` (e.g.
 :func:`~xrisalis.instrument.smooth_roll`) *unless* the :class:`Pointing` also

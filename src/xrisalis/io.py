@@ -84,8 +84,8 @@ class PhotonList:
     src_id: np.ndarray = None   # [-]
     baseline_id: np.ndarray = None
     exposure: float = None
-    ra_pnt: float = 0.0
-    dec_pnt: float = 0.0
+    ra_pnt: float = 0.0         # nominal pointing RA  [deg] (tangent point)
+    dec_pnt: float = 0.0        # nominal pointing Dec [deg]
     meta: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -109,8 +109,18 @@ class PhotonList:
 
     @property
     def loc_rad(self):
-        """(N,2) sky offset [rad] as [dec, ra] (matches fringe/off-axis math)."""
-        return np.column_stack((self.dec_deg * DEG2RAD, self.ra_deg * DEG2RAD))
+        """(N,2) tangent-plane offset [rad] as ``[eta, xi]`` (North, East).
+
+        Each photon's true sky position is projected (gnomonic) about the
+        nominal pointing ``(ra_pnt, dec_pnt)``, so RA differences carry their
+        ``cos(dec)`` and wrap at 0/360 deg. The column order matches the
+        attitude stream's ``(pitch, yaw)`` offsets and the fringe/off-axis maths
+        (:func:`xrisalis.simulate.off_axis_angles_2d`).
+        """
+        from .coords import sky_to_tangent
+        xi, eta = sky_to_tangent(self.ra_deg, self.dec_deg,
+                                 self.ra_pnt, self.dec_pnt)
+        return np.column_stack((eta, xi))
 
     # --- io ------------------------------------------------------------------
     def to_hdu(self):
@@ -167,6 +177,9 @@ class EventList:
     ra_deg: np.ndarray = None
     dec_deg: np.ndarray = None
     pointing: np.ndarray = None    # (T,3) pitch,yaw,roll [rad]; row = int(time/time_step)
+    #   pitch/yaw are tangent-plane offsets (North, East) from (ra_pnt, dec_pnt)
+    ra_pnt: float = 0.0            # nominal pointing RA  [deg] (tangent point)
+    dec_pnt: float = 0.0           # nominal pointing Dec [deg]
     time_step: float = 1.0         # attitude sampling interval [s] (POINTING row spacing)
     ebounds: dict = None           # {'CHANNEL','E_MIN','E_MAX'}
     exposure: float = None
@@ -301,6 +314,10 @@ class EventList:
     def mean_boresight(self):
         """Mean recorded boresight ``(pitch, yaw)`` [rad] over the events.
 
+        Like the stream itself, this is a tangent-plane offset (North, East)
+        from the nominal pointing ``(ra_pnt, dec_pnt)``;
+        :meth:`mean_boresight_radec` gives the sky position.
+
         The time-average pointing of the observation, taken from the *stored*
         POINTING stream (never from an attitude estimate passed to
         :meth:`attitude_stream`). It is the default **phase centre** of
@@ -317,6 +334,24 @@ class EventList:
         if np.all(bore == bore[0]):
             return bore[0].copy()
         return bore.mean(axis=0)
+
+    def offsets_to_radec(self, pitch_yaw):
+        """Tangent-plane ``(pitch, yaw)`` [rad] -> sky ``(ra_deg, dec_deg)``."""
+        from .coords import tangent_to_sky
+        p = np.asarray(pitch_yaw, float)
+        ra, dec = tangent_to_sky(p[..., 1], p[..., 0], self.ra_pnt, self.dec_pnt)
+        return ra, dec
+
+    def radec_to_offsets(self, ra_deg, dec_deg):
+        """Sky ``(ra_deg, dec_deg)`` -> tangent-plane ``(pitch, yaw)`` [rad]."""
+        from .coords import sky_to_tangent
+        xi, eta = sky_to_tangent(ra_deg, dec_deg, self.ra_pnt, self.dec_pnt)
+        return np.stack((np.asarray(eta, float), np.asarray(xi, float)), axis=-1)
+
+    def mean_boresight_radec(self):
+        """Sky position ``(ra_deg, dec_deg)`` of :meth:`mean_boresight`."""
+        ra, dec = self.offsets_to_radec(self.mean_boresight())
+        return float(ra), float(dec)
 
     # --- selection -----------------------------------------------------------
     def select(self, mask):
@@ -388,6 +423,8 @@ class EventList:
         if self.fov is not None and np.isfinite(self.fov):
             hdr["FOV"] = (float(self.fov), "Derived imaging FoV, half-angle [rad]")
         hdr["TIMESTEP"] = (float(self.time_step), "Attitude row spacing [s]")
+        hdr["RA_PNT"] = (float(self.ra_pnt), "Nominal pointing RA [deg]")
+        hdr["DEC_PNT"] = (float(self.dec_pnt), "Nominal pointing DEC [deg]")
         for k, v in self.header_extra.items():
             hdr[k] = v
         return fits.BinTableHDU.from_columns(cols, header=hdr)
@@ -462,6 +499,8 @@ class EventList:
                 ra_deg=d["RA"] if "RA" in names else None,
                 dec_deg=d["DEC"] if "DEC" in names else None,
                 pointing=pointing, time_step=time_step, ebounds=ebounds,
+                ra_pnt=float(hdr.get("RA_PNT", 0.0)),
+                dec_pnt=float(hdr.get("DEC_PNT", 0.0)),
                 exposure=hdr.get("EXPOSURE"), fov=hdr.get("FOV"),
                 slat_id=d["SLAT_ID"] if "SLAT_ID" in names else None,
                 chip_id=d["CHIP_ID"] if "CHIP_ID" in names else None,

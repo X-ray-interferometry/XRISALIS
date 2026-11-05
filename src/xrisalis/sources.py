@@ -25,8 +25,10 @@ import numpy as np
 
 from .io import SimputSource, read_fits_image, read_fits_cube
 from .units import to_deg, to_arcsec, to_kev, to_radec_deg, is_skycoord
+from .coords import tangent_to_sky
 
 DEG_PER_ARCSEC = 1.0 / 3600.0
+ARCSEC2RAD = np.pi / (180.0 * 3600.0)
 
 
 def _center(center_deg):
@@ -176,7 +178,10 @@ class ImageMorphology(Morphology):
 
     ``scale_arcsec`` is the angular size of the image's largest axis; ``center``
     is the (RA, Dec) of the image centre in degrees. Columns map to +RA (alpha),
-    rows to +Dec (delta).
+    rows to +Dec (delta). Pixel offsets are true angles on the tangent plane at
+    the image centre (East = +alpha, North = +delta) and are de-projected
+    (gnomonic) to sky coordinates, so an RA offset carries its 1/cos(dec):
+    the image keeps its shape on the sky at any declination.
     """
     def __init__(self, image, scale_arcsec, center_deg=(0.0, 0.0),
                  rotation_deg=0.0):
@@ -203,9 +208,8 @@ class ImageMorphology(Morphology):
         jc = rng.uniform(-0.5, 0.5, n)
         alpha_as = (cols + jc - (self.nx - 1) / 2.0) * self.pix_arcsec
         delta_as = (rows + jr - (self.ny - 1) / 2.0) * self.pix_arcsec
-        ra = self.center_deg[0] + alpha_as * DEG_PER_ARCSEC
-        dec = self.center_deg[1] + delta_as * DEG_PER_ARCSEC
-        return ra, dec
+        return tangent_to_sky(alpha_as * ARCSEC2RAD, delta_as * ARCSEC2RAD,
+                              *self.center_deg)
 
     @property
     def centroid_deg(self):
@@ -214,8 +218,9 @@ class ImageMorphology(Morphology):
         col = (w * xs).sum(); row = (w * ys).sum()
         a = (col - (self.nx - 1) / 2.0) * self.pix_arcsec
         d = (row - (self.ny - 1) / 2.0) * self.pix_arcsec
-        return (self.center_deg[0] + a * DEG_PER_ARCSEC,
-                self.center_deg[1] + d * DEG_PER_ARCSEC)
+        ra, dec = tangent_to_sky(a * ARCSEC2RAD, d * ARCSEC2RAD,
+                                 *self.center_deg)
+        return float(ra), float(dec)
 
 
 # ============================================================================

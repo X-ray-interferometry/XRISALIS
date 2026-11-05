@@ -442,7 +442,9 @@ def _resolve_phase_center(events, phase_center=None):
     ``None`` (default) is the observation's mean recorded pointing
     (:meth:`~xrisalis.io.EventList.mean_boresight`). Otherwise a sky position
     in the same convention as source positions: ``(ra_deg, dec_deg)`` (bare
-    numbers are degrees, Quantities are converted) or a SkyCoord.
+    numbers are degrees, Quantities are converted) or a SkyCoord. Either way
+    the result is a tangent-plane offset (North, East) from the events'
+    nominal pointing, on the same footing as the attitude stream.
     """
     if phase_center is None:
         return events.mean_boresight()
@@ -450,7 +452,7 @@ def _resolve_phase_center(events, phase_center=None):
         ra, dec = to_radec_deg(phase_center[0], phase_center[1])
     else:
         ra, dec = to_radec_deg(phase_center)
-    return np.array([float(dec), float(ra)]) * DEG2RAD     # (pitch, yaw)
+    return events.radec_to_offsets(float(ra), float(dec))   # (pitch, yaw)
 
 
 def _boresight_offsets(events, stream, correct_boresight, phase_center):
@@ -474,9 +476,10 @@ def _boresight_offsets(events, stream, correct_boresight, phase_center):
     return off, centre
 
 
-def _phase_center_deg(centre):
-    """``(pitch, yaw)`` [rad] -> ``(ra_deg, dec_deg)`` for metadata."""
-    return float(centre[1] * RAD2DEG), float(centre[0] * RAD2DEG)
+def _phase_center_deg(centre, events):
+    """Tangent-plane ``(pitch, yaw)`` [rad] -> sky ``(ra_deg, dec_deg)``."""
+    ra, dec = events.offsets_to_radec(centre)
+    return float(ra), float(dec)
 
 
 def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
@@ -513,6 +516,9 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
     phase_center : optional
         The sky position the image is centred on, as ``(ra_deg, dec_deg)``
         (bare numbers are degrees; Quantities and a SkyCoord are accepted).
+        Image axes are true tangent-plane offsets from it (East along the
+        columns' ``alpha``, North along the rows' ``delta``), so RA offsets
+        include their ``cos(dec)``.
         Default None: the observation's mean recorded pointing
         (:meth:`~xrisalis.io.EventList.mean_boresight`), so the image is
         centred where the telescope looked and a source at offset ``dL`` from
@@ -626,7 +632,7 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
 
     meta["n_events"] = int(e.size)
     meta["deconvolved"] = bool(deconvolving)
-    meta["phase_center_deg"] = _phase_center_deg(centre)
+    meta["phase_center_deg"] = _phase_center_deg(centre, events)
     return img, span, uv, meta
 
 
@@ -725,7 +731,7 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
             "combine": combine, "band_spans_uas": spans,
             "pixel_scale_uas": span_uas / target[0],
             "phase_center_deg": _phase_center_deg(
-                _resolve_phase_center(events, phase_center))}
+                _resolve_phase_center(events, phase_center), events)}
     return combined, span_uas, band_images, meta
 
 
@@ -885,7 +891,8 @@ class RGBImage:
             h["BAND_LO"] = (float(lo), "band lower edge [keV]")
             h["BAND_HI"] = (float(hi), "band upper edge [keV]")
             h["NEVENTS"] = (int(self.counts[i]), "events in this band")
-            if i < len(self.beam_sigmas_uas):
+            if i < len(self.beam_sigmas_uas) and np.isfinite(
+                    self.beam_sigmas_uas[i]):
                 h["BEAMSIG"] = (float(self.beam_sigmas_uas[i]),
                                 "dirty-beam sigma [uas]")
             if self.matched_sigma_uas is not None:
@@ -900,9 +907,11 @@ class RGBImage:
             deg = self.pixel_scale_uas / 3.6e9
             h["CTYPE1"], h["CTYPE2"] = "RA---SIN", "DEC--SIN"
             h["CUNIT1"], h["CUNIT2"] = "deg", "deg"
-            h["CRPIX1"], h["CRPIX2"] = nx / 2 + 0.5, ny / 2 + 0.5
-            h["CRVAL1"], h["CRVAL2"] = 0.0, 0.0
-            h["CDELT1"], h["CDELT2"] = -deg, deg
+            # phase centre at pixel (n//2, n//2); columns run East, rows North
+            h["CRPIX1"], h["CRPIX2"] = nx // 2 + 1, ny // 2 + 1
+            pc = (self.meta or {}).get("phase_center_deg") or (0.0, 0.0)
+            h["CRVAL1"], h["CRVAL2"] = float(pc[0]), float(pc[1])
+            h["CDELT1"], h["CDELT2"] = deg, deg
             hdus.append(fits.ImageHDU(np.asarray(self.channels[i], np.float32),
                                       header=h))
         if beams and self.beams:
@@ -1093,7 +1102,7 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
                                                         (int, float))
                              else str(fringe_taper)),
             "baselines_used": used, "matched": matched_sigma is not None,
-            "phase_center_deg": _phase_center_deg(_centre)}
+            "phase_center_deg": _phase_center_deg(_centre, events)}
     return RGBImage(channels=channels, span_uas=span_uas,
                     pixel_scale_uas=pixel_scale_uas, bands=bands,
                     counts=counts, beams=beams, beam_sigmas_uas=sigmas,

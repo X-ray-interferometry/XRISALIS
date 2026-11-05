@@ -11,7 +11,7 @@ import scipy.special as sps
 import scipy.stats as sampler
 from .config import KEV, H, C
 from .io import PhotonList, EventList
-from .units import to_seconds
+from .units import to_seconds, to_radec_deg, is_skycoord
 from .pointing import attitude_index
 
 
@@ -283,7 +283,11 @@ def off_axis_angles_2d(pointing, toa, loc):
     Decomposes the sky offset (source relative to the boresight) into the
     baseline/roll frame: ``theta_par`` along the fringe (DETY, interferometric)
     axis and ``theta_perp`` along the cross (DETZ) axis. ``loc`` is the (N,2)
-    sky offset [rad]; ``toa`` the integer time-step index per photon.
+    tangent-plane offset ``[eta, xi]`` [rad] of each photon from the nominal
+    pointing (:attr:`~xrisalis.io.PhotonList.loc_rad`), and ``pointing`` the
+    attitude stream whose ``(pitch, yaw)`` are offsets on the same plane, so
+    the difference below is a true small angle (cos dec and the RA wrap are
+    handled by the projection); ``toa`` is the integer time-step index.
     """
     pos_rel = pointing[toa, :2] - loc
     r = np.sqrt(pos_rel[:, 0] ** 2 + pos_rel[:, 1] ** 2)
@@ -516,6 +520,13 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
     cube, or a combination via ``a + b``) — routed through
     :func:`sample_photons_components` — or a SimputSource / object exposing
     ``ra_deg``, ``dec_deg``, ``spectra`` (the point-catalog fast path).
+
+    ``pointing`` is the **nominal pointing** ``(ra, dec)`` (bare degrees,
+    Quantities or a SkyCoord): the tangent point all off-axis/fringe maths is
+    projected about, stored as ``PhotonList.ra_pnt/dec_pnt``. The attitude
+    stream (:mod:`xrisalis.pointing`) gives small offsets from it. There is no
+    automatic re-pointing: a source far from it falls outside the field of
+    view and is vignetted.
     """
     exposure = to_seconds(exposure)                  # accept a time Quantity
     if rng is None:
@@ -526,11 +537,15 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
         d = sample_photons(arf.energ_lo, arf.energ_hi, arf.per_baseline,
                            source.spectra, (source.ra_deg, source.dec_deg),
                            exposure, rng=rng, lightcurve=lightcurve)
+    if is_skycoord(pointing):
+        ra_pnt, dec_pnt = to_radec_deg(pointing)
+    else:
+        ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     return PhotonList(
         time=d["time"], energy_kev=d["energy_kev"],
         ra_deg=d["ra_deg"], dec_deg=d["dec_deg"],
         src_id=d["src_id"], baseline_id=d["baseline_id"],
-        exposure=exposure, ra_pnt=pointing[0], dec_pnt=pointing[1],
+        exposure=exposure, ra_pnt=float(ra_pnt), dec_pnt=float(dec_pnt),
         meta={"seed": seed},
     )
 
@@ -611,6 +626,9 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
     this call (any spec accepted by :func:`xrisalis.pointing.as_pointing`: a
     :class:`~xrisalis.pointing.Pointing`, a callable ``f(t)``, a file path, or a
     constant ``(pitch, yaw[, roll])``). If None, ``instrument.pointing`` is used.
+    The boresight ``(pitch, yaw)`` are tangent-plane offsets (North, East) from
+    the photons' nominal pointing ``(ra_pnt, dec_pnt)``; the target itself is set
+    in :func:`generate_photons`.
     """
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -645,13 +663,21 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
     # with the `fringe_taper` (down-weight decohered high-order fringes) or the
     # sub-band synthesis options in xrisalis.reconstruct. The TRUE_ENERGY column
     # is stored so the ideal (true-energy) reconstruction can be compared against.
-    dety, slat_id = simulate_positions(bidx, true_kev * KEV, theta_v,
-                                       instrument.baselines, rng=rng)
-
-    # VIGNETTE: photons whose fringe packet could not land on the detector
-    # (source beyond the field of view) come back as NaN — drop them. This is
-    # what prevents the accept-reject sampler from looping forever on an
-    # out-of-FoV source/boresight.
+    # VIGNETTE: beyond a baseline's geometric (detection) FoV the fringe packet
+    # misses the detector, so those photons are never placed (the sampler alone
+    # does not enforce this edge and stalls far outside it); the 'arbitrary'
+    # combiner receives every photon along the fringe axis by design. Across
+    # it (DETZ) the field is set by the beam angle, |theta_perp| <= beta/2.
+    # Placements the sampler cannot make come back as NaN too; all are dropped.
+    fov = np.array([(np.inf if b.combiner == "arbitrary"
+                     else b.field_of_view(which="detection"),
+                     b.field_of_view(which="cross")) for b in instrument.baselines])
+    inside = ((np.abs(theta_v) <= fov[bidx, 0])
+              & (np.abs(theta_perp_v) <= fov[bidx, 1]))
+    dety, slat_id = np.full(bidx.size, np.nan), np.full(bidx.size, -1, np.int32)
+    dety[inside], slat_id[inside] = simulate_positions(
+        bidx[inside], true_kev[inside] * KEV, theta_v[inside],
+        instrument.baselines, rng=rng)
     on = np.isfinite(dety)
     n_out = int((~on).sum())
     if n_out:
@@ -713,6 +739,7 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
         dety=dety, detz=detz,
         baseline_id=bidx, pi=pi, ra_deg=ra_v, dec_deg=dec_v,
         pointing=attitude, time_step=float(instrument.time_step),
+        ra_pnt=photons.ra_pnt, dec_pnt=photons.dec_pnt,
         ebounds=rmf.ebounds_dict,
         exposure=photons.exposure, fov=fov_img, slat_id=slat_id,
         chip_id=place["chip_id"], chipx=place["chipx"], chipy=place["chipy"],

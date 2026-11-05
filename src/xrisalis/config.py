@@ -4,10 +4,10 @@ Unit convention (the single source of truth for the FITS boundary):
 
 * Sky coordinates on disk (FITS): **degrees**.
 * Energies on disk (FITS): **keV**.
-* Detector positions on disk (FITS): **metres**.
+* Detector positions on disk (FITS): **meters**.
 * Times on disk (FITS): **seconds**.
 
-Internally, the physics layer works in SI (radians, Joules, metres, seconds).
+Internally, the physics layer works in SI (radians, Joules, meters, seconds).
 Conversions happen only at the io/ boundary, never scattered through the code.
 """
 import numpy as np

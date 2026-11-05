@@ -209,9 +209,10 @@ class Baseline:
             :func:`xrisalis.reconstruct.resolving_power`). Needed for coherence.
         detector : Detector, optional
             Caps the illuminated region by the physical extent.
-        which : {'imaging','detection','geometry','coherence','diffraction'}
+        which : {'imaging','detection','geometry','coherence','diffraction','cross'}
             'detection' → geometry only (used for vignetting); 'imaging' (the
-            default / 'auto') → min(geometry, coherence).
+            default / 'auto') → min(geometry, coherence); 'cross' → the
+            non-interferometric (DETZ) axis, half the beam angle ``β/2``.
         coherence_factor : float
             Prefactor on the coherence term.
 
@@ -244,6 +245,7 @@ class Baseline:
             "coherence": fov_coh,
             "diffraction": fov_env,
             "imaging": min(fov_geo, fov_coh),
+            "cross": self.beam_angle / 2.0,
         }
         if which not in table:
             raise ValueError(f"unknown FoV kind {which!r}; use one of {list(table)}")
