@@ -2,6 +2,8 @@
 attitude/pointing model + field of view)."""
 
 import math
+from abc import ABC, abstractmethod
+
 import numpy as np
 
 from .config import H, C, KEV
@@ -12,121 +14,154 @@ from .pointing import as_pointing
 # from baseline.py
 # ==========================================================================
 
-class Baseline:
-    """A single slatted-mirror baseline of an X-ray interferometer.
+class Baseline(ABC):
+    """One baseline (pair of interfering beams) of an X-ray interferometer.
 
-    Exactly one of the geometry pairs must be supplied so the rest can be
-    derived (D<->F, W<->L via beam_angle). Units are SI on the way in except
-    ``W`` which is given in micrometers for convenience and stored in meters.
+    Abstract base: every beam-combiner architecture is a subclass that decides
+    where photons land on the detector (:meth:`sample_dety`) and how large the
+    pattern is (:attr:`footprint`). The base fixes what reconstruction relies
+    on — baseline ``D`` [m], beam angle ``beam_angle`` [rad], fringe spacing
+    ``lambda/beam_angle`` and the fringe phase convention
+    (:meth:`fringe_offset`) — so any subclass that honors it reconstructs
+    unchanged. ``L`` [m] is the propagation distance that sets the geometric
+    beam walk (``-L theta``) and the DETZ shadow; ``Wz`` [m] is the mirror
+    aperture along the cross (DETZ) axis, which carries no interference.
+
+    Subclasses: :class:`SlattedMirrorBaseline` (Willingale 2004),
+    :class:`ArbitraryCombinerBaseline` (idealized beamsplitter),
+    :class:`PellicleBaseline` (placeholder).
     """
+    combiner = None          # short label of the architecture
+    vignettes = True         # photons beyond the geometric FoV are dropped
+
+    def __init__(self, D, beam_angle, L, Wz=1e-2):
+        self.D, self.beam_angle, self.L, self.Wz = D, beam_angle, L, Wz
+
+    # -- what a subclass must provide -------------------------------------------
+    @property
+    @abstractmethod
+    def footprint(self):
+        """Full DETY extent [m] of the pattern on the detector."""
+
+    @abstractmethod
+    def sample_dety(self, energies_j, thetas, rng):
+        """DETY positions [m] and a per-photon patch index (slat, port, ...)
+        for photons of energies ``energies_j`` [J] at fringe-axis off-axis
+        angles ``thetas`` [rad]. Unplaceable photons get NaN / -1."""
+
+    def _diffraction_fov(self, lam):
+        """Diffraction-envelope FoV [rad]; none unless a subclass has one."""
+        return np.inf
+
+    # -- shared physics -----------------------------------------------------------
+    def fringe_spacing(self, lam):
+        """Fringe spacing ``dy = lambda / beam_angle`` [m]."""
+        return lam / self.beam_angle
+
+    def fringe_offset(self, theta):
+        """DETY of the white-light fringe maximum for off-axis angle ``theta``:
+        ``-D sin(theta) / (2 sin(beam_angle/2))`` (~ ``-D theta/beam_angle``)."""
+        return -(self.D * np.sin(theta)) / (2 * np.sin(self.beam_angle / 2))
+
+    def fresnel_number_z(self, energy_kev, distance=None):
+        """Fresnel number ``(Wz/2)^2 / (lambda Z)`` of the cross-axis aperture
+        (``Z`` defaults to ``L``): >> 1 geometric shadow, ~1 Fresnel."""
+        lam = H * C / (float(energy_kev) * KEV)
+        Z = self.L if distance is None else float(distance)
+        return (self.Wz / 2.0) ** 2 / (lam * Z)
+
+    def field_of_view(self, energy_kev=None, R=None, detector=None,
+                      which="imaging", coherence_factor=1.0):
+        """Half-angle field of view [rad] (see docs/fov_from_instrument.md).
+
+        * **geometry** — the white-light fringe must land on the footprint
+          (capped by the detector extent): ``half / (D/beta - L)``.
+        * **detection** — geometry if this architecture vignettes
+          (``vignettes``), else ``inf``; used by redistribute to drop photons.
+        * **coherence** — chromatic decoherence: ``coherence_factor R lambda/D``
+          (``R = E/sigma_E``, needs ``energy_kev`` and ``R``).
+        * **diffraction** — single-aperture envelope, if the subclass has one.
+        * **imaging** (default, 'auto') — min(geometry, coherence).
+        * **cross** — non-interferometric DETZ axis: ``beta/2``.
+        """
+        if which == "auto":
+            which = "imaging"
+        half = self.footprint / 2.0
+        if detector is not None and detector.fringe_half_extent_m() is not None:
+            half = min(half, detector.fringe_half_extent_m())
+        denom = self.D / self.beam_angle - self.L
+        fov_geo = np.inf if denom <= 0 else half / denom
+        fov_coh = fov_env = np.inf
+        if energy_kev is not None:
+            lam = H * C / (float(energy_kev) * KEV)
+            fov_env = self._diffraction_fov(lam)
+            if R is not None and np.isfinite(R) and R > 0:
+                fov_coh = coherence_factor * R * lam / self.D
+        table = {"geometry": fov_geo,
+                 "detection": fov_geo if self.vignettes else np.inf,
+                 "coherence": fov_coh, "diffraction": fov_env,
+                 "imaging": min(fov_geo, fov_coh), "cross": self.beam_angle / 2.0}
+        if which not in table:
+            raise ValueError(f"unknown FoV kind {which!r}; use one of {list(table)}")
+        return float(table[which])
+
+
+class SlattedMirrorBaseline(Baseline):
+    """Slatted-mirror baseline (Willingale 2004).
+
+    ``num_pairs`` slats of width ``W`` at aperture pitch ``slat_pitch`` (>= W;
+    default W, a contiguous comb) tile the detector into a comb of single-slit
+    Fresnel envelopes, each filled by the global two-beam fringe of spacing
+    ``lambda/beam_angle``; ``slat_pitch > W`` opens dark gaps. Sampled by
+    :func:`xrisalis.simulate.sample_detector_positions`.
+
+    Exactly one of each geometry pair must be supplied so the rest can be
+    derived (D<->F, W<->L via beam_angle). Units are SI except ``W``, given in
+    micrometers and stored in meters.
+    """
+    combiner = "slatted"
 
     def __init__(self, num_pairs, D=None, L=None, W=None, beam_angle=None,
                  F=None, grazing_angle=None, bench_length=None,
-                 mirr_reflec=None, Wz=1e-2, slat_pitch=None,
-                 combiner="slatted", overlap_width=None, visibility=1.0):
-        # --- beam angle ---
-        if beam_angle is not None:
-            self.beam_angle = beam_angle
-        else:
-            try:
-                self.beam_angle = W * 1e-6 / L
-            except TypeError:
-                raise ValueError(
-                    "Define either beam_angle, or both W (um) and L (m).")
-        # --- baseline length D <-> focal length F ---
-        if D is not None:
-            self.D = D
-        else:
-            try:
-                self.D = F * self.beam_angle
-            except TypeError:
+                 mirr_reflec=None, Wz=1e-2, slat_pitch=None):
+        if beam_angle is None:
+            if W is None or L is None:
+                raise ValueError("Define either beam_angle, or both W (um) and L (m).")
+            beam_angle = W * 1e-6 / L
+        if D is None:
+            if F is None:
                 raise ValueError("Define either D or F.")
-        self.F = F if F is not None else self.D / self.beam_angle
-        # --- beam width W <-> combining length L ---
+            D = F * beam_angle
         if W is not None:
             self.W = W * 1e-6
+        elif L is not None:
+            self.W = beam_angle * L
         else:
-            try:
-                self.W = self.beam_angle * L
-            except TypeError:
-                raise ValueError("Define either W (um) or L (m).")
-        self.L = L if L is not None else self.W / self.beam_angle
+            raise ValueError("Define either W (um) or L (m).")
+        super().__init__(D, beam_angle, L if L is not None else self.W / beam_angle, Wz)
+        self.F = F if F is not None else D / beam_angle
         if bench_length is not None:
             self.bench_length = bench_length
-        # --- grazing angle ---
-        if grazing_angle is not None:
-            self.grazing_angle = grazing_angle
-        else:
-            try:
-                self.grazing_angle = np.arctan(self.D / 2 / self.bench_length) / 2
-            except (TypeError, AttributeError):
-                self.grazing_angle = None
-
+        if grazing_angle is None and bench_length is not None:
+            grazing_angle = np.arctan(D / 2 / bench_length) / 2
+        self.grazing_angle = grazing_angle
         self.num_pairs = num_pairs
         self.mirr_reflec = mirr_reflec
-        # mirror aperture along the CROSS (z / DETZ) axis [m] — the "height" of
-        # the slat, order cm. Unlike the fringe (DETY) axis, there is no
-        # interference here: the two beams are separated along the baseline (y)
-        # direction, so z just carries the single-aperture illumination of the
-        # mirror. Sets the DETZ spread (see xrisalis.simulate.sample_detz_positions).
-        self.Wz = Wz
-
-        # SLATTED-MIRROR APERTURE (fringe / DETY axis). ``num_pairs`` slats, each
-        # of width ``W``, at aperture pitch ``slat_pitch`` (>= W; default = W,
-        # i.e. contiguous, no gap). The two interfering arms are separated by the
-        # baseline ``D`` (two-arm offset). On the detector the beams tile into a
-        # COMB of ``num_pairs`` single-slit envelopes at pitch ``slat_pitch``
-        # (magnification 1 for the flat combiner), each filled by the global
-        # two-beam fringe of period ``lambda/beam_angle``; a gap
-        # ``slat_pitch - W`` opens dark bands between patches. See
-        # xrisalis.simulate.sample_detector_positions. Placeholder geometry —
-        # refine with the real slat pitch/gap/steering later.
-        if slat_pitch is None:
-            slat_pitch = self.W
-        if slat_pitch < self.W - 1e-18:
+        self.slat_pitch = self.W if slat_pitch is None else slat_pitch
+        if self.slat_pitch < self.W - 1e-18:
             raise ValueError("slat_pitch must be >= slat width W (slats cannot "
                              "overlap); use slat_pitch=W for a contiguous comb.")
-        self.slat_pitch = slat_pitch
-
-        # BEAM COMBINER MODEL (fringe / DETY axis).
-        # * 'slatted' (default): the slatted-mirror comb above -- Fresnel
-        #   single-slat envelopes x global two-beam fringe (accept-reject in
-        #   xrisalis.simulate.sample_detector_positions).
-        # * 'arbitrary': an idealized combiner (e.g. a beamsplitter, as in the
-        #   Accretion Explorer Interferometer). Two-beam fringes of period
-        #   lambda/beam_angle and contrast ``visibility``, NO diffraction: the
-        #   interferogram is a top-hat window of width ``overlap_width`` (the
-        #   region where the beams overlap; default = comb_span = W*num_pairs)
-        #   with a hard cut-off at its edges. Every photon lands inside the
-        #   window -- none are lost to diffraction wings or non-overlap regions.
-        #   See xrisalis.simulate.sample_arbitrary_positions.
-        combiner = str(combiner).lower()
-        if combiner not in ("slatted", "arbitrary"):
-            raise ValueError("combiner must be 'slatted' or 'arbitrary', "
-                             f"got {combiner!r}")
-        self.combiner = combiner
-        if overlap_width is not None and not overlap_width > 0:
-            raise ValueError("overlap_width must be > 0 (meters)")
-        self.overlap_width = None if overlap_width is None else float(overlap_width)
-        if not 0.0 <= float(visibility) <= 1.0:
-            raise ValueError("visibility must be in [0, 1]")
-        self.visibility = float(visibility)
-
         # physical consistency checks (isclose guards against binary rounding)
         if not math.isclose(self.D, self.F * self.beam_angle):
             raise ValueError("D, F and beam_angle are inconsistent.")
         if not math.isclose(self.W, self.beam_angle * self.L):
             raise ValueError("W, L and beam_angle are inconsistent.")
-        if not isinstance(self.num_pairs, (int, np.integer)) or self.num_pairs <= 0:
+        if not isinstance(num_pairs, (int, np.integer)) or num_pairs <= 0:
             raise ValueError("num_pairs must be a positive integer.")
 
     @classmethod
     def willingale(cls, D, Wz=1e-2, slat_pitch=None):
-        """Preset baseline from Willingale (2004): 30 pairs, L=10, W=300um, bench=7m.
-
-        ``Wz`` is the mirror z-aperture (cross/DETZ axis), default 1 cm.
-        ``slat_pitch`` is the aperture slat pitch (default = W, contiguous comb).
-        """
+        """Preset from Willingale (2004): 30 pairs, L=10 m, W=300 um, bench 7 m."""
         return cls(num_pairs=30, D=D, L=10, W=300, bench_length=7, Wz=Wz,
                    slat_pitch=slat_pitch)
 
@@ -140,116 +175,95 @@ class Baseline:
         """Full DETY extent of the slat comb [m] = num_pairs * slat_pitch."""
         return self.num_pairs * self.slat_pitch
 
-    def fresnel_number_z(self, energy_kev, distance=None):
-        """Fresnel number ``N_F = (Wz/2)^2 / (lambda * Z)`` for the z aperture.
-
-        ``Z`` is the propagation distance to the detector (defaults to the
-        combining length ``L``). ``N_F >> 1`` -> geometric shadow (the DETZ
-        profile is the mirror's geometric image, ~wavelength-independent);
-        ``N_F ~ 1`` -> Fresnel; ``N_F << 1`` -> Fraunhofer. For cm-scale mirrors
-        at the ~10 m detector plane this is in the hundreds-to-thousands
-        (geometric); it only approaches Fresnel over ~km propagation.
-        """
-        lam = H * C / (float(energy_kev) * KEV)
-        Z = self.L if distance is None else float(distance)
-        return (self.Wz / 2.0) ** 2 / (lam * Z)
-
     @property
-    def overlap_span(self):
-        """Full DETY extent of the interferogram [m].
+    def footprint(self):
+        return self.W * self.num_pairs
 
-        ``overlap_width`` for an arbitrary combiner if set, else the slat comb
-        span ``num_pairs * slat_pitch``.
-        """
-        if self.combiner == "arbitrary" and self.overlap_width is not None:
-            return self.overlap_width
-        return self.comb_span
+    def sample_dety(self, energies_j, thetas, rng):
+        from .simulate import sample_detector_positions
+        return sample_detector_positions(self, energies_j, thetas, rng=rng,
+                                         return_slat=True)
+
+    def _diffraction_fov(self, lam):
+        return lam / self.W
 
     def __repr__(self):
-        extra = ""
-        if self.combiner != "slatted":
-            extra = (f", combiner={self.combiner!r}, "
-                     f"overlap={self.overlap_span * 1e3:.4g} mm")
-        return (f"Baseline(D={self.D:.4g} m, L={self.L:.4g} m, "
-                f"W={self.W * 1e6:.4g} um, num_pairs={self.num_pairs}{extra})")
+        return (f"SlattedMirrorBaseline(D={self.D:.4g} m, L={self.L:.4g} m, "
+                f"W={self.W * 1e6:.4g} um, num_pairs={self.num_pairs})")
 
-    # -- field of view --------------------------------------------------------
-    def field_of_view(self, energy_kev=None, R=None, detector=None,
-                      which="imaging", coherence_factor=1.0):
-        """Half-angle field of view [rad] set by this baseline's optics/detector.
 
-        Four mechanisms (see docs/fov_from_instrument.md); the FoV is the
-        minimum of those that apply:
+class ArbitraryCombinerBaseline(Baseline):
+    """Idealized two-beam combiner (e.g. an AEI-type beamsplitter).
 
-        * **geometry** — the fringe packet must land on the illuminated region
-          (``W * num_pairs``, capped by the detector's physical extent):
-          ``θ_geo ≈ half / (D/β − L)`` with ``β = beam_angle``,
-          ``half = min(W·num_pairs/2, detector.half_extent)``. This is the hard
-          edge enforced by the fringe sampler (a source beyond it cannot be
-          placed), so it is what redistribute vignettes against. For an
-          ``'arbitrary'`` combiner ``half = overlap_span/2``; beyond this angle
-          the white-light (zero-OPD) fringe leaves the window, but photons are
-          NOT vignetted (the window receives every photon) -- what remains are
-          high-order fringes that decohere under the detector resolution.
-        * **coherence** — bandwidth/chromatic decoherence limits the usable
-          fringe count to ``≈ R`` periods (``R = E/σ_E``, the detector resolving
-          power): ``θ_coh ≈ coherence_factor · R · (λ/D)``. Theoretical scaling
-          ``θ_coh ~ R·λ/D``; ``coherence_factor`` (default 1) sets where along
-          the ``exp(-2π²N²/R²)`` envelope the cut is taken.
-        * **diffraction** — single-slat envelope ``θ_env ≈ λ/W`` (informational;
-          rarely binds).
+    Fringes of spacing ``lambda/beam_angle`` and contrast ``visibility`` (0-1),
+    NO diffraction: the interferogram is a top-hat window of width
+    ``overlap_width`` [m] (where the beams overlap), centered at ``-L theta``
+    and cut off hard at its edges. Every photon lands inside the window — none
+    are lost to diffraction wings or non-overlapping beam regions, and there
+    is no fringe-axis vignetting. ``L`` defaults to ``overlap_width/beam_angle``.
+    Sampled by :func:`xrisalis.simulate.sample_arbitrary_positions`.
+    """
+    combiner = "arbitrary"
+    vignettes = False
 
-        Parameters
-        ----------
-        energy_kev : float, optional
-            Energy at which λ-dependent terms (coherence, diffraction) are
-            evaluated. If None, only the (energy-independent) geometry applies.
-        R : float, optional
-            Detector resolving power ``E/σ_E`` at ``energy_kev`` (e.g. from
-            :func:`xrisalis.reconstruct.resolving_power`). Needed for coherence.
-        detector : Detector, optional
-            Caps the illuminated region by the physical extent.
-        which : {'imaging','detection','geometry','coherence','diffraction','cross'}
-            'detection' → geometry only (used for vignetting); 'imaging' (the
-            default / 'auto') → min(geometry, coherence); 'cross' → the
-            non-interferometric (DETZ) axis, half the beam angle ``β/2``.
-        coherence_factor : float
-            Prefactor on the coherence term.
+    def __init__(self, D, beam_angle, overlap_width, visibility=1.0, Wz=1e-2,
+                 L=None):
+        if not overlap_width > 0:
+            raise ValueError("overlap_width must be > 0 (meters)")
+        if not 0.0 <= visibility <= 1.0:
+            raise ValueError("visibility must be in [0, 1]")
+        super().__init__(D, beam_angle,
+                         overlap_width / beam_angle if L is None else L, Wz)
+        self.overlap_width, self.visibility = float(overlap_width), float(visibility)
 
-        Returns
-        -------
-        float
-            Half-angle field of view [rad] (``np.inf`` if the selected
-            mechanism does not apply, e.g. coherence without ``R``).
-        """
-        if which == "auto":
-            which = "imaging"
-        half = (self.overlap_span if self.combiner == "arbitrary"
-                else self.W * self.num_pairs) / 2.0
-        if detector is not None and detector.fringe_half_extent_m() is not None:
-            half = min(half, detector.fringe_half_extent_m())
-        denom = self.D / self.beam_angle - self.L
-        fov_geo = np.inf if denom <= 0 else half / denom
+    @property
+    def footprint(self):
+        return self.overlap_width
 
-        fov_coh = np.inf
-        fov_env = np.inf
-        if energy_kev is not None:
-            lam = H * C / (float(energy_kev) * KEV)
-            fov_env = lam / self.W
-            if R is not None and np.isfinite(R) and R > 0:
-                fov_coh = coherence_factor * R * lam / self.D
+    def sample_dety(self, energies_j, thetas, rng):
+        from .simulate import sample_arbitrary_positions
+        return sample_arbitrary_positions(self, energies_j, thetas, rng=rng,
+                                          return_slat=True)
 
-        table = {
-            "geometry": fov_geo,
-            "detection": fov_geo,
-            "coherence": fov_coh,
-            "diffraction": fov_env,
-            "imaging": min(fov_geo, fov_coh),
-            "cross": self.beam_angle / 2.0,
-        }
-        if which not in table:
-            raise ValueError(f"unknown FoV kind {which!r}; use one of {list(table)}")
-        return float(table[which])
+    def __repr__(self):
+        return (f"ArbitraryCombinerBaseline(D={self.D:.4g} m, "
+                f"beam_angle={self.beam_angle:.4g} rad, "
+                f"overlap={self.overlap_width * 1e3:.4g} mm, V={self.visibility:.2f})")
+
+
+class PellicleBaseline(Baseline):
+    """PLACEHOLDER — pellicle (beamsplitter) combiner, e.g. the AEI X3 design.
+
+    Not implemented yet; constructing it works, simulating with it raises
+    NotImplementedError. Start from :class:`ArbitraryCombinerBaseline`, which
+    already gives fringes in a hard-edged overlap window, and add e.g.:
+
+    * two output ports (reflected / transmitted arm) with complementary
+      fringes (phase shifted by pi); return the port as the patch index of
+      :meth:`sample_dety` and give :attr:`footprint` the extent per port;
+    * energy-dependent fringe visibility (pellicle figure, path matching);
+    * per-port throughput (~30 % per arm for AEI). A throughput common to all
+      photons belongs in the ARF rather than here.
+
+    Keep the base-class conventions — fringe maxima at
+    :meth:`fringe_offset`, spacing :meth:`fringe_spacing` — and reconstruction
+    works unchanged. Extra design parameters are kept in ``self.parameters``.
+    """
+    combiner = "pellicle"
+
+    def __init__(self, D, beam_angle, L, Wz=1e-2, **parameters):
+        super().__init__(D, beam_angle, L, Wz)
+        self.parameters = parameters
+
+    @property
+    def footprint(self):
+        raise NotImplementedError("PellicleBaseline.footprint is a placeholder.")
+
+    def sample_dety(self, energies_j, thetas, rng):
+        raise NotImplementedError(
+            "PellicleBaseline is a placeholder; implement sample_dety (see the "
+            "class docstring) or use ArbitraryCombinerBaseline.")
+
 
 # ==========================================================================
 # from interferometer.py
@@ -298,36 +312,32 @@ class Interferometer:
         return self
 
     # -- construction ---------------------------------------------------------
-    def add_baseline(self, *args, **kwargs):
-        self.baselines.append(Baseline(*args, **kwargs))
+    def add_baseline(self, baseline=None, **kwargs):
+        """Append a :class:`Baseline` instance, or build a
+        :class:`SlattedMirrorBaseline` from ``kwargs``."""
+        self.baselines.append(SlattedMirrorBaseline(**kwargs) if baseline is None
+                              else baseline)
         return self
 
     def add_willingale_baseline(self, D):
-        self.baselines.append(Baseline.willingale(D))
-        return self
+        return self.add_baseline(SlattedMirrorBaseline.willingale(D))
 
     @classmethod
-    def from_arf(cls, arf, roller=None, fov_arcsec=None, baseline_kwargs=None,
-                 **kwargs):
-        """Build an interferometer whose baselines match an ARF's per-baseline
-        lengths. ``arf`` is an xrisalis.io.ARF object.
+    def from_arf(cls, arf, roller=None, fov_arcsec=None, baseline=None, **kwargs):
+        """Build an interferometer with one baseline per ARF baseline length.
 
-        With ``baseline_kwargs=None`` each baseline gets the Willingale (2004)
-        geometry. Otherwise ``baseline_kwargs`` is a dict of
-        :class:`Baseline` arguments (everything except ``D``) applied to every
-        baseline, e.g. an arbitrary-combiner geometry::
+        ``baseline`` is a callable ``D -> Baseline`` (default: the Willingale
+        slatted mirror). E.g. an AEI-type idealized combiner::
 
-            Interferometer.from_arf(arf, baseline_kwargs=dict(
-                num_pairs=1, W=26e3, beam_angle=4.85e-6, combiner="arbitrary"))
+            Interferometer.from_arf(arf, baseline=lambda D: ArbitraryCombinerBaseline(
+                D, beam_angle=4.85e-6, overlap_width=0.026))
         """
         fov = None if fov_arcsec is None else fov_arcsec * (3.141592653589793 /
                                                             (180.0 * 3600.0))
         inst = cls(roller=roller, fov=fov, **kwargs)
+        make = SlattedMirrorBaseline.willingale if baseline is None else baseline
         for D in arf.baseline_lengths:
-            if baseline_kwargs is None:
-                inst.add_willingale_baseline(float(D))
-            else:
-                inst.add_baseline(D=float(D), **baseline_kwargs)
+            inst.add_baseline(make(float(D)))
         return inst
 
     def clear_baselines(self):

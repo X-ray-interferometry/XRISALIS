@@ -23,7 +23,8 @@ from .config import (
 from .detector import Chip, Detector
 from .evaluate import EvaluationResult
 from .evaluate import evaluate as evaluate_image
-from .instrument import Baseline, Interferometer, no_roll, smooth_roll
+from .instrument import (Baseline, SlattedMirrorBaseline, ArbitraryCombinerBaseline,
+                         PellicleBaseline, Interferometer, no_roll, smooth_roll)
 
 # astropy is a required dependency (pyproject: astropy>=6.0), so the io/products
 # layer imports unconditionally.
@@ -107,6 +108,9 @@ __all__ = [
     "ARF",
     "RMF",
     "Baseline",
+    "SlattedMirrorBaseline",
+    "ArbitraryCombinerBaseline",
+    "PellicleBaseline",
     "Chip",
     "CompositeSource",
     "CubeSource",
