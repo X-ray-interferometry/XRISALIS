@@ -9,7 +9,7 @@ interpretable quality metrics:
 * photometry   — recovered flux ratio of the two brightest peaks vs. the truth;
 * fidelity     — cross-correlation and residual RMS against a model image
                  rendered at the *reconstruction's own resolution* (so a
-                 perfect-but-blurred image scores well, not penalised for the
+                 perfect-but-blurred image scores well, not penalized for the
                  finite beam).
 
 Pure NumPy — no astropy needed (it reads plain arrays / a SimputSource's public
@@ -55,7 +55,7 @@ def true_sources(source, center_deg=(0.0, 0.0)):
     a plain ``(positions_uas, fluxes)`` tuple (returned unchanged).
 
     Positions are tangent-plane offsets ``alpha`` (East) / ``delta`` (North)
-    from ``center_deg`` = ``(ra, dec)`` -- the image's phase centre, e.g.
+    from ``center_deg`` = ``(ra, dec)`` -- the image's phase center, e.g.
     ``meta['phase_center_deg']`` from :func:`xrisalis.reconstruct.reconstruct`.
     """
     if isinstance(source, tuple):
@@ -105,7 +105,7 @@ def find_peaks(image, span_uas, n=2, min_sep_uas=None):
 
 
 def _match(recovered, truth):
-    """Greedy nearest-neighbour match truth->recovered; return per-truth error."""
+    """Greedy nearest-neighbor match truth->recovered; return per-truth error."""
     errs = []
     used = set()
     for t in truth:
@@ -199,7 +199,7 @@ def evaluate(image, span_uas, source=None, n_sources=2, min_sep_uas=None,
         dynamic range) are returned; truth-relative fields are NaN.
     n_sources : int                number of peaks to recover.
     center_deg : (ra, dec), optional
-        Phase centre of ``image`` (``meta['phase_center_deg']``); truth
+        Phase center of ``image`` (``meta['phase_center_deg']``); truth
         positions are projected about it (see :func:`true_sources`).
 
     Returns

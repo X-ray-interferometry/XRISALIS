@@ -202,7 +202,7 @@ def pointing_from_file(path, degrees=True):
       roller).
 
     Angles are interpreted in **degrees** by default. For a FITS table, a column
-    ``TUNIT`` of ``rad``/``radian`` is honoured automatically. Times outside the
+    ``TUNIT`` of ``rad``/``radian`` is honored automatically. Times outside the
     tabulated range are clamped to the first/last sample.
     """
     cols, units = _read_pointing_table(path)

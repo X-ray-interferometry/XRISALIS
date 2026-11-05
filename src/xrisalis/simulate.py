@@ -101,7 +101,7 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
     pitch ``slat_pitch``, each filled by the *global* two-beam fringe (period
     ``lambda/beam_angle``, shifted by the source term ``D*sin(theta)``). Keeping
     the fringe global preserves the interferometric phase that reconstruction
-    reads. ``slat_pitch = W`` gives a contiguous comb (the legacy behaviour);
+    reads. ``slat_pitch = W`` gives a contiguous comb (the legacy behavior);
     ``slat_pitch > W`` opens dark gaps between patches.
     """
     if getattr(baseline, "combiner", "slatted") == "arbitrary":
@@ -168,11 +168,11 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
             # warning here fires on every iteration and buries the output of a
             # long run (thousands of identical lines) instead of informing it.
             warned_off_fov = True
-            warnings.warn("There are fringe centres outside the FoV!")
+            warnings.warn("There are fringe centers outside the FoV!")
 
         valid = np.logical_and(rand_pos >= width_box[0], rand_pos <= width_box[1])
 
-        # SLAT COMB: assign each position to its nearest slat patch (centres at
+        # SLAT COMB: assign each position to its nearest slat patch (centers at
         # (k-(N-1)/2)*p_det, k=0..N-1) and reject positions in the inter-slat
         # gaps (|local| > W/2). local is the within-slat coordinate.
         y_rel = rand_pos + baseline.L * thetas
@@ -210,7 +210,7 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
 
 
 def arbitrary_fringe_intensity(y, baseline, wavelength, theta):
-    """Interferogram of the ``'arbitrary'`` combiner (unnormalised).
+    """Interferogram of the ``'arbitrary'`` combiner (unnormalized).
 
     ``I(y) = 1 + V cos(2 pi (y - y0) / dy)`` inside the overlap window
     ``|y + L theta| <= overlap_span/2`` and 0 outside, with fringe period
@@ -224,8 +224,8 @@ def arbitrary_fringe_intensity(y, baseline, wavelength, theta):
     theta = np.asarray(theta, float)
     period = lam / baseline.beam_angle
     y0 = -(baseline.D * np.sin(theta)) / (2 * np.sin(baseline.beam_angle / 2))
-    centre = -baseline.L * theta
-    inside = np.abs(y - centre) <= baseline.overlap_span / 2.0
+    center = -baseline.L * theta
+    inside = np.abs(y - center) <= baseline.overlap_span / 2.0
     val = 1.0 + baseline.visibility * np.cos(2 * np.pi * (y - y0) / period)
     return np.where(inside, val, 0.0)
 
@@ -234,10 +234,10 @@ def sample_arbitrary_positions(baseline, energies_j, thetas, rng=None,
                                max_iter=10000, return_slat=False):
     """Detector DETY positions [m] for an ``'arbitrary'`` beam combiner.
 
-    Idealised two-beam combiner: fringes of period ``lambda/beam_angle`` and
+    Idealized two-beam combiner: fringes of period ``lambda/beam_angle`` and
     contrast ``baseline.visibility``, NO diffraction. The interferogram is cut
     off at the edges of the overlap window (width ``baseline.overlap_span``,
-    centred at ``-L theta`` -- the geometric beam walk), and **every** photon is
+    centered at ``-L theta`` -- the geometric beam walk), and **every** photon is
     placed inside it: there is no vignetting and no photon is wasted. See
     :func:`arbitrary_fringe_intensity` for the pattern.
 
@@ -304,8 +304,8 @@ def off_axis_angles(pointing, toa, loc):
 def _fresnel_slit_intensity(y, aperture, wavelength, dist):
     """1-D Fresnel diffraction intensity of a slit of full width ``aperture``.
 
-    ``y`` is the detector position [m] relative to the slit centre, ``dist`` the
-    propagation distance [m]. Returns the (unnormalised) intensity.
+    ``y`` is the detector position [m] relative to the slit center, ``dist`` the
+    propagation distance [m]. Returns the (unnormalized) intensity.
     """
     s = np.sqrt(2.0 / (wavelength * dist))
     u1 = (y - aperture / 2.0) * s
@@ -471,7 +471,7 @@ def sample_photons(energ_lo, energ_hi, per_baseline_resp, spectra, coords,
 
 
 def sample_photons_components(arf, components, exposure, rng=None):
-    """Generalised photon sampler over source **components** (any morphology).
+    """Generalized photon sampler over source **components** (any morphology).
 
     Each ``component`` is duck-typed with ``energy_kev``, ``fluxdensity``,
     ``morphology.sample(n, rng) -> (ra_deg, dec_deg)``, ``lightcurve`` and
@@ -711,7 +711,7 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
 
     # 3) focal-plane placement: map each baseline's (DETY, DETZ) onto the
     # (possibly multi-chip) detector so the event list also carries chip id,
-    # chip pixel/metre coordinates and total focal-plane coordinates. Uses the
+    # chip pixel/meter coordinates and total focal-plane coordinates. Uses the
     # instrument's detector layout if it defines chips, else a default tiled
     # layout (one chip per baseline).
     from .detector import Detector

@@ -3,7 +3,7 @@
 Section 1 (transforms): gridded IFFT and direct IFT (pure physics).
 Section 2 (uv): filter events + compute uv-coordinates/visibilities + taper.
 Section 3 (drivers): reconstruct() and reconstruct_subbands().
-Section 4 (colour): dirty beams, beam matching and reconstruct_rgb()."""
+Section 4 (color): dirty beams, beam matching and reconstruct_rgb()."""
 
 from __future__ import annotations
 import warnings
@@ -23,7 +23,7 @@ def _resolve_fov_arcsec(fov_arcsec, events, instrument, energy_kev=None,
     EventList at redistribute time (includes the coherence term), else
     :meth:`Interferometer.field_of_view` (geometry only, no RMF here), else a
     legacy 1.6 mas fallback (with a warning). An explicit ``fov_arcsec`` (number
-    or Quantity) is always honoured.
+    or Quantity) is always honored.
     """
     if fov_arcsec is not None:
         return to_arcsec(fov_arcsec)
@@ -111,7 +111,7 @@ def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
 
         i.e. each photon is weighted by its own coherence (down-weighting the
         chromatically scrambled high-fringe-order photons rather than amplifying
-        them), then the cell is normalised by its accumulated squared coherence.
+        them), then the cell is normalized by its accumulated squared coherence.
         This is the correct place to undo chromatic decoherence — per-cell after
         binning, never per-photon. As ``deconv_epsilon`` grows it converges to an
         optimal D-shaped taper; as it shrinks it deconvolves more aggressively at
@@ -119,7 +119,7 @@ def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
         noise. The scrambled long-baseline phase is genuinely lost, so this does
         not out-resolve the fringe-order taper — it recovers a clean image with a
         principled, RMF-derived weighting.
-    deconv_epsilon : float  Wiener regularisation (fraction of peak sum D^2).
+    deconv_epsilon : float  Wiener regularization (fraction of peak sum D^2).
 
     Returns
     -------
@@ -327,7 +327,7 @@ def compute_uv(energies_j, positions, baseline_indices, roll, baselines,
     baselines : list[Baseline]
     boresight : (N, 2) ndarray, optional
         Per-event boresight ``(pitch, yaw)`` [rad] **relative to the phase
-        centre** ``c`` — i.e. ``P - c``, where ``P`` is the *known or estimated*
+        center** ``c`` — i.e. ``P - c``, where ``P`` is the *known or estimated*
         attitude at the photon's arrival time (see
         :meth:`xrisalis.io.EventList.boresight_per_event`). Callers normally
         get this from :func:`reconstruct`, which subtracts ``c`` itself.
@@ -437,7 +437,7 @@ def compute_uv(energies_j, positions, baseline_indices, roll, baselines,
 # ==========================================================================
 
 def _resolve_phase_center(events, phase_center=None):
-    """Phase centre ``(pitch, yaw)`` [rad] for an EventList.
+    """Phase center ``(pitch, yaw)`` [rad] for an EventList.
 
     ``None`` (default) is the observation's mean recorded pointing
     (:meth:`~xrisalis.io.EventList.mean_boresight`). Otherwise a sky position
@@ -456,29 +456,29 @@ def _resolve_phase_center(events, phase_center=None):
 
 
 def _boresight_offsets(events, stream, correct_boresight, phase_center):
-    """Per-event boresight relative to the phase centre, and the centre itself.
+    """Per-event boresight relative to the phase center, and the center itself.
 
-    Returns ``(offsets, centre)``: ``offsets`` is the ``(N, 2)`` array
+    Returns ``(offsets, center)``: ``offsets`` is the ``(N, 2)`` array
     ``P - c`` [rad] to hand to :func:`compute_uv` (``None`` when there is
-    nothing to correct), ``centre`` the phase centre ``c`` as
+    nothing to correct), ``center`` the phase center ``c`` as
     ``(pitch, yaw)`` [rad].
 
-    The centre is resolved from the *recorded* pointing, never from the
+    The center is resolved from the *recorded* pointing, never from the
     attitude estimate in ``stream``: a constant bias in the estimate must show
     up as an image shift, as it would in real data, rather than cancel out.
     """
-    centre = _resolve_phase_center(events, phase_center)
+    center = _resolve_phase_center(events, phase_center)
     if not correct_boresight:
-        return None, centre
-    off = events.boresight_per_event(stream) - centre
+        return None, center
+    off = events.boresight_per_event(stream) - center
     if not np.any(off):
-        return None, centre               # fixed stare on the phase centre
-    return off, centre
+        return None, center               # fixed stare on the phase center
+    return off, center
 
 
-def _phase_center_deg(centre, events):
+def _phase_center_deg(center, events):
     """Tangent-plane ``(pitch, yaw)`` [rad] -> sky ``(ra_deg, dec_deg)``."""
-    ra, dec = events.offsets_to_radec(centre)
+    ra, dec = events.offsets_to_radec(center)
     return float(ra), float(dec)
 
 
@@ -512,17 +512,17 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
         removes the smear of a drifting or jittering boresight. Set False to
         see the raw, uncorrected image, in which the source sits at its
         position *relative to the boresight*. For a fixed stare at the phase
-        centre (the default for any constant pointing) the two are identical.
+        center (the default for any constant pointing) the two are identical.
     phase_center : optional
-        The sky position the image is centred on, as ``(ra_deg, dec_deg)``
+        The sky position the image is centered on, as ``(ra_deg, dec_deg)``
         (bare numbers are degrees; Quantities and a SkyCoord are accepted).
         Image axes are true tangent-plane offsets from it (East along the
         columns' ``alpha``, North along the rows' ``delta``), so RA offsets
         include their ``cos(dec)``.
         Default None: the observation's mean recorded pointing
         (:meth:`~xrisalis.io.EventList.mean_boresight`), so the image is
-        centred where the telescope looked and a source at offset ``dL`` from
-        it appears at ``dL``. Pass the target's coordinates to centre on the
+        centered where the telescope looked and a source at offset ``dL`` from
+        it appears at ``dL``. Pass the target's coordinates to center on the
         target instead — e.g. to undo a deliberate or erroneous *static*
         pointing offset, which the data alone cannot distinguish from an
         intended one. Must lie within a few fields of the pointing.
@@ -551,11 +551,11 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
         ``R = E/sigma_E`` (see :func:`resolving_power`). Turns on the gridded
         matched-filter Wiener deconvolution (see :func:`ifft_image`), which
         weights each binned photon by its own chromatic coherence ``D(N)`` and
-        normalises per uv-cell — undoing chromatic decoherence in the visibility
+        normalizes per uv-cell — undoing chromatic decoherence in the visibility
         domain without amplifying individual decohered photons. Supersedes
         ``fringe_taper`` (ignored when set). Ignored for method='IFT'.
     deconv_epsilon : float
-        Wiener regularisation for ``deconvolve`` (fraction of the peak per-cell
+        Wiener regularization for ``deconvolve`` (fraction of the peak per-cell
         sum D^2). Larger = closer to an optimal taper (cleaner); smaller =
         more aggressive deconvolution (noisier). Default 0.5.
     use_true_energy : bool
@@ -584,7 +584,7 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
         energies_j = events.energy_j
     stream = events.attitude_stream(attitude)
     roll = events.roll_per_event_from(stream)
-    bore, centre = _boresight_offsets(events, stream, correct_boresight,
+    bore, center = _boresight_offsets(events, stream, correct_boresight,
                                       phase_center)
 
     mask, e, p, b, r = filter_events(energies_j, events.dety,
@@ -632,12 +632,12 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
 
     meta["n_events"] = int(e.size)
     meta["deconvolved"] = bool(deconvolving)
-    meta["phase_center_deg"] = _phase_center_deg(centre, events)
+    meta["phase_center_deg"] = _phase_center_deg(center, events)
     return img, span, uv, meta
 
 
 def _pad_to(img, shape):
-    """Centre-pad a 2-D image with zeros to ``shape`` (same pixel scale)."""
+    """Center-pad a 2-D image with zeros to ``shape`` (same pixel scale)."""
     out = np.zeros(shape, dtype=img.dtype)
     r0 = (shape[0] - img.shape[0]) // 2
     c0 = (shape[1] - img.shape[1]) // 2
@@ -667,10 +667,10 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
     ----------
     bands : list[(e_lo, e_hi)]      detected-energy bands [keV].
     combine : {'sum', 'mean'}        how to combine the per-band images.
-    normalize_bands : bool           peak-normalise each band before combining.
+    normalize_bands : bool           peak-normalize each band before combining.
     attitude, correct_boresight, phase_center
-        As for :func:`reconstruct`. The default phase centre is taken from the
-        whole event list, so every band is centred on the same sky point.
+        As for :func:`reconstruct`. The default phase center is taken from the
+        whole event list, so every band is centered on the same sky point.
 
     Returns
     -------
@@ -736,14 +736,14 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
 
 
 # ==========================================================================
-# Section 4: false-colour (RGB) reconstruction
+# Section 4: false-color (RGB) reconstruction
 # ==========================================================================
 
 def dirty_beam(uv, vis, fov, energies_j, min_baseline_D, samples=(256, 256),
                **kw):
     """The dirty beam (point-source response) belonging to a uv-sampling.
 
-    A point source at the phase centre has unimodular visibilities, so the beam
+    A point source at the phase center has unimodular visibilities, so the beam
     of a *weighted* reconstruction is the transform of the weights alone — and
     ``|vis|`` is exactly the per-sample weight :func:`compute_uv` applied (the
     fringe taper, or 1 with no taper).  Passing the same ``uv``, ``fov``,
@@ -766,7 +766,7 @@ def beam_sigma_uas(beam, pixel_scale_uas):
     the sidelobe structure of a dirty beam makes unstable.
 
     The half-maximum crossing is interpolated linearly between the two
-    bracketing radius bins.  Without that the answer is quantised to whole
+    bracketing radius bins.  Without that the answer is quantized to whole
     pixels, and on a coarse grid two genuinely different beams can measure
     identical — whereupon the beam matching they feed silently does nothing.
     """
@@ -804,11 +804,11 @@ def match_resolution(images, sigmas_uas, pixel_scale_uas,
 
     Bands imaged with the same array still have *different* beams, because the
     uv-sampling scales with wavelength and the effective area is energy
-    dependent.  Compositing them raw paints an instrumental colour gradient
-    onto every source — a coloured core inside a differently coloured halo —
+    dependent.  Compositing them raw paints an instrumental color gradient
+    onto every source — a colored core inside a differently colored halo —
     which is indistinguishable, by eye, from a real spectral gradient.  Blurring
     each image by ``sqrt(sigma_ref^2 - sigma^2)`` puts them all on the coarsest
-    beam, after which colour is spectral shape.
+    beam, after which color is spectral shape.
 
     Returns ``(images, sigma_ref_uas)``.
     """
@@ -907,7 +907,7 @@ class RGBImage:
             deg = self.pixel_scale_uas / 3.6e9
             h["CTYPE1"], h["CTYPE2"] = "RA---SIN", "DEC--SIN"
             h["CUNIT1"], h["CUNIT2"] = "deg", "deg"
-            # phase centre at pixel (n//2, n//2); columns run East, rows North
+            # phase center at pixel (n//2, n//2); columns run East, rows North
             h["CRPIX1"], h["CRPIX2"] = nx // 2 + 1, ny // 2 + 1
             pc = (self.meta or {}).get("phase_center_deg") or (0.0, 0.0)
             h["CRVAL1"], h["CRVAL2"] = float(pc[0]), float(pc[1])
@@ -955,9 +955,9 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
                     with_beams=True, use_true_energy=False,
                     attitude=None, correct_boresight=True,
                     phase_center=None, verbose=False):
-    """Reconstruct three energy bands onto a common grid for a colour image.
+    """Reconstruct three energy bands onto a common grid for a color image.
 
-    The interferometric version of the familiar false-colour composite: one
+    The interferometric version of the familiar false-color composite: one
     reconstruction per detected-energy band, mapped to red, green and blue, so
     that hue carries spectral shape while brightness carries flux.
 
@@ -998,7 +998,7 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
     with_beams : bool           compute the per-band dirty beams at all.
     use_true_energy : bool      diagnostic; reconstruct with TRUE_ENERGY.
     attitude, correct_boresight, phase_center
-        As for :func:`reconstruct`; one phase centre for all three channels.
+        As for :func:`reconstruct`; one phase center for all three channels.
 
     Returns
     -------
@@ -1038,7 +1038,7 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
         energies_j = events.energy_j
     _stream = events.attitude_stream(attitude)
     roll = events.roll_per_event_from(_stream)
-    _bore, _centre = _boresight_offsets(events, _stream, correct_boresight,
+    _bore, _center = _boresight_offsets(events, _stream, correct_boresight,
                                         phase_center)
 
     ids_per = _per_channel(baseline_ids)
@@ -1102,7 +1102,7 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
                                                         (int, float))
                              else str(fringe_taper)),
             "baselines_used": used, "matched": matched_sigma is not None,
-            "phase_center_deg": _phase_center_deg(_centre, events)}
+            "phase_center_deg": _phase_center_deg(_center, events)}
     return RGBImage(channels=channels, span_uas=span_uas,
                     pixel_scale_uas=pixel_scale_uas, bands=bands,
                     counts=counts, beams=beams, beam_sigmas_uas=sigmas,

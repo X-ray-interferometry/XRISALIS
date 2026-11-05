@@ -146,7 +146,7 @@ class Spectrum:
 @dataclass
 class LightCurve:
     """Binned light curve (OGIP ``RATE``)."""
-    time: np.ndarray               # bin-centre time [s]
+    time: np.ndarray               # bin-center time [s]
     rate: np.ndarray               # counts/s
     error: np.ndarray              # counts/s (Poisson)
     timedel: float                 # bin width [s]
@@ -171,8 +171,8 @@ class LightCurve:
                 (float(t.max()) if t.size else dt)
         edges = np.arange(tstart, tstop + dt, dt)
         counts, _ = np.histogram(t, bins=edges)
-        centres = 0.5 * (edges[:-1] + edges[1:])
-        return cls(time=centres, rate=counts / dt, error=np.sqrt(counts) / dt,
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        return cls(time=centers, rate=counts / dt, error=np.sqrt(counts) / dt,
                    timedel=float(dt), exposure=float(tstop - tstart),
                    energy_kev=energy_kev, baseline_bounds=baseline_bounds)
 

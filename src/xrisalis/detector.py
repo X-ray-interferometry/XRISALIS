@@ -6,13 +6,13 @@ plus a shape label. It is deliberately a small, explicit object so it can later
 grow the rest of the detector physics without changing call sites:
 
 * full pixel geometry (pitch, gaps, tiling) and detector shape;
-* per-event **positional reconstruction via charge-cloud modelling** (splitting
-  charge across neighbouring pixels, then estimating the sub-pixel impact
+* per-event **positional reconstruction via charge-cloud modeling** (splitting
+  charge across neighboring pixels, then estimating the sub-pixel impact
   position) — the hook is :meth:`reconstruct_position`, not implemented yet;
 * Nyquist checks that the pixel pitch samples the fringe spacing
   ``Δy_f = λ / beam_angle``.
 
-Lengths are metres (the package's internal detector unit); astropy length
+Lengths are meters (the package's internal detector unit); astropy length
 Quantities are accepted and converted.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ import astropy.units as u
 
 
 def _to_m(value):
-    """Length -> metres. Quantity converted; bare number assumed metres."""
+    """Length -> meters. Quantity converted; bare number assumed meters."""
     if value is None:
         return None
     if isinstance(value, u.Quantity):
@@ -37,8 +37,8 @@ def _to_m(value):
 class Chip:
     """One detector chip on the focal plane.
 
-    A chip is a rectangular pixel array placed at ``(cx_m, cy_m)`` (its centre)
-    in focal-plane metres. Focal-plane axes: ``x`` runs along the fringe (DETY)
+    A chip is a rectangular pixel array placed at ``(cx_m, cy_m)`` (its center)
+    in focal-plane meters. Focal-plane axes: ``x`` runs along the fringe (DETY)
     direction, ``y`` along the cross (DETZ) direction. Pixel indexing has its
     origin at the chip's lower-left corner (col along +x, row along +y).
 
@@ -121,7 +121,7 @@ class Detector:
         Each baseline's pattern (fringe extent ``W*num_pairs`` along DETY, shadow
         extent ``Wz`` along DETZ) gets its own chip. Chips are uniform (sized to
         the largest baseline, times ``margin``) and tiled along the cross axis
-        (``axis='y'``, the default) with ``gap_m`` between them, centred on the
+        (``axis='y'``, the default) with ``gap_m`` between them, centered on the
         fringe axis. Baseline ``i`` -> chip ``i``. This is a convenience default;
         supply an explicit ``chips=[...]`` list for a real focal-plane layout.
         """
@@ -153,9 +153,9 @@ class Detector:
         """Map baseline-local ``(dety, detz)`` [m] onto the focal plane.
 
         Returns a dict of arrays: ``chip_id``; ``chipx``/``chipy`` (pixel col/row
-        within the chip, origin at lower-left); ``chipx_m``/``chipy_m`` (metres
-        from the chip corner); ``focx``/``focy`` (total focal-plane metres). The
-        baseline's pattern is centred on its chip, so ``focx = chip.cx + dety``,
+        within the chip, origin at lower-left); ``chipx_m``/``chipy_m`` (meters
+        from the chip corner); ``focx``/``focy`` (total focal-plane meters). The
+        baseline's pattern is centered on its chip, so ``focx = chip.cx + dety``,
         ``focy = chip.cy + detz``. Photons on a baseline with no chip get
         ``chip_id = -1`` and NaN coordinates.
         """
@@ -178,7 +178,7 @@ class Detector:
             fy = c.cy_m + detz[sel]
             chip_id[sel] = c.chip_id
             focx[sel] = fx; focy[sel] = fy
-            lx = fx - c.x0_m; ly = fy - c.y0_m          # metres from chip corner
+            lx = fx - c.x0_m; ly = fy - c.y0_m          # meters from chip corner
             chipx_m[sel] = lx; chipy_m[sel] = ly
             chipx[sel] = lx / c.pixel_m                  # pixel col/row
             chipy[sel] = ly / c.pixel_m

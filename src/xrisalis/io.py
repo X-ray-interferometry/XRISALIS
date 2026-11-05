@@ -2,7 +2,7 @@
 
 PhotonList and EventList data products, OGIP ARF/RMF and SIMPUT readers, and
 shared FITS helpers. astropy is the only FITS backend. Sky coords are degrees,
-energies keV, detector positions metres, times seconds on the FITS boundary."""
+energies keV, detector positions meters, times seconds on the FITS boundary."""
 
 from __future__ import annotations
 import datetime as _dt
@@ -303,7 +303,7 @@ class EventList:
 
         The companion of :attr:`roll_per_event` for the two *translational*
         attitude axes, which reconstruction needs in order to phase-reference
-        every photon to a common phase centre (see
+        every photon to a common phase center (see
         :func:`xrisalis.reconstruct.compute_uv` and :meth:`mean_boresight`).
         """
         stream = self.attitude_stream(attitude)
@@ -320,9 +320,9 @@ class EventList:
 
         The time-average pointing of the observation, taken from the *stored*
         POINTING stream (never from an attitude estimate passed to
-        :meth:`attitude_stream`). It is the default **phase centre** of
+        :meth:`attitude_stream`). It is the default **phase center** of
         :func:`xrisalis.reconstruct.reconstruct`: the sky point the image is
-        centred on. Averaging over the events rather than over the stream's
+        centered on. Averaging over the events rather than over the stream's
         rows weights each attitude by the photons that saw it.
 
         A constant stream returns its exact value (no floating-point averaging
@@ -523,7 +523,7 @@ class ARF:
     energ_lo: np.ndarray          # [keV]
     energ_hi: np.ndarray          # [keV]
     total: np.ndarray             # total effective area [cm^2]
-    per_baseline: list            # list of (D_metres, specresp[cm^2])
+    per_baseline: list            # list of (D_meters, specresp[cm^2])
 
     @property
     def energy_mid(self):
@@ -611,7 +611,7 @@ def energy_to_kev(values, unit):
     """Convert spectral-axis ``values`` given in ``unit`` to keV.
 
     Handles the units XRISALIS is likely to meet on a FITS boundary: keV/eV/MeV,
-    Joule (astropy normalises a WCS ``ENER`` axis to J), Hz, and wavelength
+    Joule (astropy normalizes a WCS ``ENER`` axis to J), Hz, and wavelength
     (Angstrom/nm/m). Unknown units warn and are assumed keV.
     """
     v = np.asarray(values, float)
@@ -661,7 +661,7 @@ def _detach_hdu(hdu):
 
     ``BinTableHDU.copy`` cannot reconstruct variable-length-array heaps, so tables
     are rebuilt column-by-column (reading each field while the file is still open
-    materialises the heap into ordinary arrays)."""
+    materializes the heap into ordinary arrays)."""
     if getattr(hdu, "is_image", False):
         return fits.ImageHDU(data=np.array(hdu.data), header=hdu.header.copy())
     out = []
@@ -689,7 +689,7 @@ def resolve_reference(ref, hdul, base_dir, cache=None):
         Directory of the catalog file; external references are opened relative
         to it and only if they resolve inside its subtree.
     cache : dict, optional
-        Shared between calls for one catalogue: each referenced HDU is detached
+        Shared between calls for one catalog: each referenced HDU is detached
         once and NAME filters use a cached name -> row index.
 
     Returns
@@ -709,7 +709,7 @@ def resolve_reference(ref, hdul, base_dir, cache=None):
     fname, ext, ver, filt = (m.group("file"), m.group("ext"),
                              m.group("ver"), m.group("filt"))
 
-    # optional per-catalogue cache: each referenced HDU is detached once and
+    # optional per-catalog cache: each referenced HDU is detached once and
     # NAME filters use a prebuilt name -> row index (O(1) per reference
     # instead of copying + scanning the table for every source)
     ckey = None
@@ -892,7 +892,7 @@ def read_fits_cube(path):
     """Read a spectral cube -> (energies_kev, images, scale_arcsec, center_deg).
 
     ``images`` has shape ``(n_energy, ny, nx)``. Per-slice energies come from a
-    spectral WCS third axis (``CTYPE3`` ENER/FREQ/WAVE, normalised to keV) when
+    spectral WCS third axis (``CTYPE3`` ENER/FREQ/WAVE, normalized to keV) when
     present, else an ``ENERGIES`` table extension. Angular scale/center from the
     celestial WCS (falling back to CDELT/IMGSCAL like :func:`read_fits_image`).
     Slices are returned in xrisalis' sky orientation (columns -> +RA, rows ->
@@ -973,7 +973,7 @@ def read_timing(hdu):
     'flux': [-], 'period': [s]}`` for a ``(PHASE, FLUX)`` table with a ``PERIOD``
     keyword. Returns ``None`` (with a warning) if it cannot be interpreted.
 
-    Time-system keywords are honoured: ``TIMEUNIT`` (s/d/ks) scales the ``TIME``
+    Time-system keywords are honored: ``TIMEUNIT`` (s/d/ks) scales the ``TIME``
     axis and ``PERIOD`` to seconds, and ``TIMEZERO`` shifts the axis. The
     resulting ``time`` array is anchored to its own start (so an absolute
     ``MJDREF``-based reference is applied as a shape from the exposure start).
@@ -1004,7 +1004,7 @@ def read_timing(hdu):
         t = t - t.min()                 # anchor to the light-curve start [s]
         return {"kind": "binned", "time": t,
                 "flux": np.asarray(hdu.data[flux_col], float)}
-    warnings.warn("Unrecognised TIMING extension; ignoring.")
+    warnings.warn("Unrecognized TIMING extension; ignoring.")
     return None
 
 
@@ -1135,7 +1135,7 @@ def _resolve_spectrum(ref, hdul, base_dir, cache=None):
 def _resolve_image(ref, hdul, base_dir, ra, dec, imgscal, imgrota):
     """(image, scale_arcsec, center_deg, rotation_deg) for an IMAGE reference.
 
-    The source's catalog position sets the on-sky centre; ``IMGSCAL`` multiplies
+    The source's catalog position sets the on-sky center; ``IMGSCAL`` multiplies
     the image's own angular size and ``IMGROTA`` adds to any WCS rotation."""
     hdu, _ = resolve_reference(ref, hdul, base_dir)
     if hdu is None or hdu.data is None:

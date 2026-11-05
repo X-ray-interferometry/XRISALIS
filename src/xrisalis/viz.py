@@ -252,7 +252,7 @@ def plot_arf(arf, ax=None, baseline_mode=True, scale="log"):
         return ax
 
 
-# ---------------------------------------------------------------- colour -----
+# ---------------------------------------------------------------- color -----
 def _as_cube(rgb):
     """(H, W, 3) float cube from an RGBImage or any 3-sequence of images.
 
@@ -289,13 +289,13 @@ def white_balance(cube, mode="total", arf=None, bands=None):
     Modes
     -----
     ``"total"``
-        Equalise the integrated flux of the three bands, so the *field-average*
-        spectrum comes out white and sources are coloured by how they differ
+        Equalize the integrated flux of the three bands, so the *field-average*
+        spectrum comes out white and sources are colored by how they differ
         from it. This is the default, and it is only meaningful once a black
-        point has removed each band's sidelobe floor — otherwise it equalises
+        point has removed each band's sidelobe floor — otherwise it equalizes
         noise, not signal.
     ``"peak"``
-        Equalise the band peaks, which makes the brightest source white by
+        Equalize the band peaks, which makes the brightest source white by
         construction. Useful when one source is the reference.
     ``"flux"``
         Divide by the ARF-integrated effective area of each band, so a flat
@@ -305,7 +305,7 @@ def white_balance(cube, mode="total", arf=None, bands=None):
         Unit gains.
 
     Whichever is used, say so in the caption: the white point is a choice, and
-    the colours are not interpretable without it.
+    the colors are not interpretable without it.
     """
     if mode == "none":
         return np.ones(3)
@@ -343,16 +343,16 @@ def rgb_composite(rgb, stretch="asinh", a=0.2, percentile=100.0, gains="total",
     The steps, in the order they have to happen:
 
     1. **Clip negatives.** Dirty-image sidelobes go negative, and a negative
-       value is not a colour.
+       value is not a color.
     2. **Subtract a per-band black point** (``black``, a percentile). Clipping
        at zero leaves a *positive* floor whose level differs from band to band;
-       the eye reads that as a colour, and the stretch turns it into speckle.
+       the eye reads that as a color, and the stretch turns it into speckle.
        Subtracting a constant is an offset, not a stretch, so it leaves hue
        alone. Set it honestly — a high black point also hides real faint
        structure, so quote the value whenever you show the image.
     3. **Apply per-channel linear gains** (``gains``; see
        :func:`white_balance`).
-    4. **Normalise once**, on the whole cube, to ``percentile`` (100 = the
+    4. **Normalize once**, on the whole cube, to ``percentile`` (100 = the
        maximum).
     5. **Stretch once**, on the whole cube: ``"asinh"`` (soft parameter ``a``;
        smaller = more aggressive), ``"sqrt"`` or ``"linear"``.
@@ -387,7 +387,7 @@ def rgb_composite(rgb, stretch="asinh", a=0.2, percentile=100.0, gains="total",
 
 def plot_rgb(rgb, span_uas=None, ax=None, title=None, markers=None,
              legend=True, **kw):
-    """False-colour image with axes in micro-arcsec and a band legend.
+    """False-color image with axes in micro-arcsec and a band legend.
 
     ``rgb`` is an :class:`~xrisalis.reconstruct.RGBImage` or three arrays;
     remaining keywords go to :func:`rgb_composite` (``stretch``, ``a``,
@@ -428,7 +428,7 @@ def plot_rgb(rgb, span_uas=None, ax=None, title=None, markers=None,
 def plot_rgb_channels(rgb, figsize=(11, 3.4), cmap=None, **kw):
     """The three band images side by side, plus the composite — a diagnostic.
 
-    Use it when a colour looks wrong: it shows whether the cause is one band's
+    Use it when a color looks wrong: it shows whether the cause is one band's
     calibration or the compositing.
     """
     cube, span, bands = _as_cube(rgb)

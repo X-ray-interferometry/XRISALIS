@@ -1,12 +1,12 @@
 """XRISALIS colormaps — perceptually uniform, chroma-symmetric.
 
 ``xri`` is the house map: it keeps the original XRISALIS black-to-blue hue
-path but has been re-parametrised in the CAM02-UCS colour-appearance space so
+path but has been re-parametrized in the CAM02-UCS color-appearance space so
 that
 
 * lightness J' is **linear** in the colormap coordinate (perceptual
   uniformity — equal data steps look like equal brightness steps, and the map
-  survives greyscale printing and the common colour-vision deficiencies), and
+  survives grayscale printing and the common color-vision deficiencies), and
 * the chroma profile is **symmetric**, M'(t) = M'(1-t), so neither the faint
   nor the bright end of an image is given spurious visual weight.
 
@@ -27,7 +27,7 @@ __all__ = ["xri_cmap", "xri_cmap_r", "xri_legacy", "XRI_RGB", "XRI_HEX",
 
 # 256-entry lookup table, CAM02-UCS uniform (J' linear 0.0->96.1) and chroma-symmetric, chroma x1.4
 #
-# Stored as floats rather than hex: 8-bit quantisation alone is worth ~0.7 J'
+# Stored as floats rather than hex: 8-bit quantization alone is worth ~0.7 J'
 # units at the dark end (where consecutive entries collide on #000000), which
 # would visibly break both the linearity and the symmetry of the stored table.
 XRI_RGB = np.array([

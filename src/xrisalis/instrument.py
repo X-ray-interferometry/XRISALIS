@@ -17,7 +17,7 @@ class Baseline:
 
     Exactly one of the geometry pairs must be supplied so the rest can be
     derived (D<->F, W<->L via beam_angle). Units are SI on the way in except
-    ``W`` which is given in micrometres for convenience and stored in metres.
+    ``W`` which is given in micrometers for convenience and stored in meters.
     """
 
     def __init__(self, num_pairs, D=None, L=None, W=None, beam_angle=None,
@@ -92,7 +92,7 @@ class Baseline:
         # * 'slatted' (default): the slatted-mirror comb above -- Fresnel
         #   single-slat envelopes x global two-beam fringe (accept-reject in
         #   xrisalis.simulate.sample_detector_positions).
-        # * 'arbitrary': an idealised combiner (e.g. a beamsplitter, as in the
+        # * 'arbitrary': an idealized combiner (e.g. a beamsplitter, as in the
         #   Accretion Explorer Interferometer). Two-beam fringes of period
         #   lambda/beam_angle and contrast ``visibility``, NO diffraction: the
         #   interferogram is a top-hat window of width ``overlap_width`` (the
@@ -106,7 +106,7 @@ class Baseline:
                              f"got {combiner!r}")
         self.combiner = combiner
         if overlap_width is not None and not overlap_width > 0:
-            raise ValueError("overlap_width must be > 0 (metres)")
+            raise ValueError("overlap_width must be > 0 (meters)")
         self.overlap_width = None if overlap_width is None else float(overlap_width)
         if not 0.0 <= float(visibility) <= 1.0:
             raise ValueError("visibility must be in [0, 1]")

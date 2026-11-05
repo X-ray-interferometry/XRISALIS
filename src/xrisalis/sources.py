@@ -32,7 +32,7 @@ ARCSEC2RAD = np.pi / (180.0 * 3600.0)
 
 
 def _center(center_deg):
-    """Resolve an image centre to a plain ``(ra_deg, dec_deg)`` float tuple.
+    """Resolve an image center to a plain ``(ra_deg, dec_deg)`` float tuple.
 
     Accepts a :class:`~astropy.coordinates.SkyCoord`, or an ``(ra, dec)`` pair of
     angle Quantities or bare degrees.
@@ -116,7 +116,7 @@ def spectrum_from_lmfit(model, params=None, e_range=(0.5, 10.0), n=200,
 
 
 def _as_spectrum(spectrum, e_grid_kev=None):
-    """Normalise any spectrum form to ``(energy_kev, fluxdensity)`` arrays.
+    """Normalize any spectrum form to ``(energy_kev, fluxdensity)`` arrays.
 
     Accepts:
 
@@ -177,9 +177,9 @@ class ImageMorphology(Morphology):
     """Sky brightness from a 2-D image sampled as a probability map.
 
     ``scale_arcsec`` is the angular size of the image's largest axis; ``center``
-    is the (RA, Dec) of the image centre in degrees. Columns map to +RA (alpha),
+    is the (RA, Dec) of the image center in degrees. Columns map to +RA (alpha),
     rows to +Dec (delta). Pixel offsets are true angles on the tangent plane at
-    the image centre (East = +alpha, North = +delta) and are de-projected
+    the image center (East = +alpha, North = +delta) and are de-projected
     (gnomonic) to sky coordinates, so an RA offset carries its 1/cos(dec):
     the image keeps its shape on the sky at any declination.
     """
@@ -382,7 +382,7 @@ def points(ra_deg, dec_deg=None, spectra=None, lightcurves=None):
 
 
 def _table_column_deg(table, col):
-    """A table column as degrees, honouring an astropy unit if the column has one."""
+    """A table column as degrees, honoring an astropy unit if the column has one."""
     c = table[col]
     unit = getattr(c, "unit", None)
     if unit is not None:
@@ -402,12 +402,12 @@ def points_from_table(table, ra_col="ra", dec_col="dec", spectrum=None,
     ----------
     table : astropy Table | mapping
         Must contain the position columns; angular units on the columns are
-        honoured (defaults to degrees).
+        honored (defaults to degrees).
     ra_col, dec_col : str            column names for the sky position.
     spectrum : optional              a single template spectrum (tuple / callable /
         astropy or lmfit model) applied to every source; defaults to a power law.
     flux_col : str, optional         per-row flux used to scale the template
-        spectrum's normalisation (relative brightness across the catalog).
+        spectrum's normalization (relative brightness across the catalog).
     spectra : list, optional         explicit per-source spectra (overrides
         ``spectrum``/``flux_col``).
     """
@@ -474,8 +474,8 @@ def model_image_source(model2d, spectrum, extent_arcsec, npix=201,
 
     ``model2d`` (e.g. ``Gaussian2D``, ``Sersic2D``, ``Disk2D``, or a compound
     model) is evaluated on an ``npix x npix`` grid spanning ``extent_arcsec``
-    (largest axis), with ``(x, y)`` in **arcsec offsets from the centre** — so
-    define the model's centre/scale parameters in arcsec. Negative values are
+    (largest axis), with ``(x, y)`` in **arcsec offsets from the center** — so
+    define the model's center/scale parameters in arcsec. Negative values are
     clipped to zero. ``extent_arcsec`` may be a Quantity; ``center_deg`` may be
     a SkyCoord.
     """
@@ -489,9 +489,13 @@ def model_image_source(model2d, spectrum, extent_arcsec, npix=201,
 
 def from_image_file(path, spectrum, scale_arcsec, center_deg=(0.0, 0.0),
                     lightcurve=None):
-    """Extended source from an image file (PNG/JPG/…) read as grayscale."""
+    """Extended source from an image file (PNG/JPG/…) read as grayscale.
+
+    The picture appears on the sky as it does in an image viewer (top = North),
+    so the top-down pixel rows are flipped to the +Dec-up convention.
+    """
     from PIL import Image                      # lazy
-    img = np.asarray(Image.open(path).convert("L"), float)
+    img = np.flipud(np.asarray(Image.open(path).convert("L"), float))
     return ImageSource(img, spectrum, scale_arcsec, center_deg, lightcurve)
 
 
@@ -501,7 +505,7 @@ def cube_source(energies_kev, images, scale_arcsec, center_deg=(0.0, 0.0),
                       norm=norm, lightcurve=lightcurve)
 
 
-KEV2ERG = 1.602176634e-9        # 1 keV in erg (for SIMPUT flux normalisation)
+KEV2ERG = 1.602176634e-9        # 1 keV in erg (for SIMPUT flux normalization)
 
 
 def _lightcurve_from_timing(timing):
@@ -563,7 +567,7 @@ def from_simput(path):
     Point entries become :class:`PointSource`; entries with a resolved ``IMAGE``
     reference become :class:`ImageSource` (extended morphology, ``IMGSCAL`` /
     ``IMGROTA`` applied); ``TIMING`` references attach a light curve; each
-    source's spectrum is normalised to its ``FLUX``. All entries compose into a
+    source's spectrum is normalized to its ``FLUX``. All entries compose into a
     :class:`CompositeSource`.
     """
     s = SimputSource.read(path)
