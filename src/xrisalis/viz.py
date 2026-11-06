@@ -14,6 +14,7 @@ hand-picked map is still available as ``xri_legacy``, either per call
 Functions take the restructured objects (or plain arrays) and an optional
 ``ax``; each returns the Matplotlib ``Axes`` (or ``Figure``) so plots compose.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,12 +22,14 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .colormaps import xri_cmap, xri_cmap_r, xri_legacy      # noqa: F401
+from .colormaps import xri_cmap, xri_cmap_r, xri_legacy  # noqa: F401
 
 # ---------------------------------------------------------------- style ------
 _STYLE_DIR = os.path.join(os.path.dirname(__file__), "styles")
-_STYLES = {"white": os.path.join(_STYLE_DIR, "xri_plot_white.mplstyle"),
-           "white_notex": os.path.join(_STYLE_DIR, "xri_plot_white_notex.mplstyle")}
+_STYLES = {
+    "white": os.path.join(_STYLE_DIR, "xri_plot_white.mplstyle"),
+    "white_notex": os.path.join(_STYLE_DIR, "xri_plot_white_notex.mplstyle"),
+}
 # module-level active style path (default = the real white style, usetex on)
 _ACTIVE = _STYLES["white"]
 
@@ -64,8 +67,12 @@ def _ax(ax, **fig_kw):
 # the default everywhere; the previous hand-picked map is kept as
 # ``xri_legacy`` and can be selected per call (``cmap=...``) or globally
 # (:func:`set_cmap`).
-_CMAPS = {"xri": xri_cmap, "xri_r": xri_cmap_r,
-          "legacy": xri_legacy, "xri_legacy": xri_legacy}
+_CMAPS = {
+    "xri": xri_cmap,
+    "xri_r": xri_cmap_r,
+    "legacy": xri_legacy,
+    "xri_legacy": xri_legacy,
+}
 # module-level active colormap (default = the uniform, chroma-symmetric map)
 _ACTIVE_CMAP = xri_cmap
 
@@ -75,7 +82,7 @@ def _resolve_cmap(cmap):
     if cmap is None:
         return _ACTIVE_CMAP
     if isinstance(cmap, str):
-        return _CMAPS.get(cmap, cmap)          # fall through to Matplotlib
+        return _CMAPS.get(cmap, cmap)  # fall through to Matplotlib
     return cmap
 
 
@@ -98,8 +105,16 @@ def get_cmap():
 
 
 # ---------------------------------------------------------------- images -----
-def plot_image(image, span_uas, ax=None, cmap=None, normalize=True,
-               colorbar=False, title=None, markers=None):
+def plot_image(
+    image,
+    span_uas,
+    ax=None,
+    cmap=None,
+    normalize=True,
+    colorbar=False,
+    title=None,
+    markers=None,
+):
     """Reconstructed image ``I(alpha_d, delta_d)`` with axes in micro-arcsec.
 
     ``cmap=None`` uses the active default (:func:`set_cmap`, initially the
@@ -115,30 +130,34 @@ def plot_image(image, span_uas, ax=None, cmap=None, normalize=True,
             m = np.abs(img).max()
             img = img / m if m else img
         half = span_uas / 2.0
-        im = ax.imshow(img, origin="lower", extent=[-half, half, -half, half],
-                       cmap=cmap, vmin=0, vmax=1 if normalize else None)
+        im = ax.imshow(
+            img,
+            origin="lower",
+            extent=[-half, half, -half, half],
+            cmap=cmap,
+            vmin=0,
+            vmax=1 if normalize else None,
+        )
         ax.set_xlabel(r"$\alpha_d$ ($\mu$as)")
         ax.set_ylabel(r"$\delta_d$ ($\mu$as)")
         if title:
             ax.set_title(title)
-        for label, pos, style in (markers or []):
+        for label, pos, style in markers or []:
             pos = np.atleast_2d(pos)
             ax.scatter(pos[:, 0], pos[:, 1], label=label, **style)
         if markers:
             ax.legend(fontsize=8, loc="upper right")
         if colorbar:
-            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04,
-                         label="Intensity (norm.)")
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Intensity (norm.)")
         return ax
 
 
-def plot_evaluation(image, span_uas, result, ax=None, title="Image evaluation",
-                    cmap=None):
+def plot_evaluation(
+    image, span_uas, result, ax=None, title="Image evaluation", cmap=None
+):
     """Reconstructed image with recovered peaks (x) and, if known, truth (+)."""
-    markers = [("recovered", result.peaks_uas,
-                dict(marker="x", c="lime", s=90, lw=2))]
-    ax = plot_image(image, span_uas, ax=ax, title=title, markers=markers,
-                    cmap=cmap)
+    markers = [("recovered", result.peaks_uas, dict(marker="x", c="lime", s=90, lw=2))]
+    ax = plot_image(image, span_uas, ax=ax, title=title, markers=markers, cmap=cmap)
     return ax
 
 
@@ -178,18 +197,19 @@ def plot_resolution_hist(uv, ax=None, bins=200, color="darkred"):
 def compare_image_uv(image, span_uas, uv, figsize=(10, 4)):
     """Side-by-side reconstructed image and uv-plane sampling."""
     with plt.style.context(_ACTIVE):
-        fig, axs = plt.subplots(1, 2, figsize=figsize,
-                                gridspec_kw={"width_ratios": [1.15, 1]})
-        plot_image(image, span_uas, ax=axs[0], colorbar=True,
-                   title="Reconstructed image")
+        fig, axs = plt.subplots(
+            1, 2, figsize=figsize, gridspec_kw={"width_ratios": [1.15, 1]}
+        )
+        plot_image(
+            image, span_uas, ax=axs[0], colorbar=True, title="Reconstructed image"
+        )
         plot_uv(uv, ax=axs[1], lim_glambda=6)
         fig.tight_layout()
         return fig
 
 
 # ---------------------------------------------------------------- spectra ----
-def plot_spectrum(spec, ax=None, per_baseline=None, baselines=(0,),
-                  color="k"):
+def plot_spectrum(spec, ax=None, per_baseline=None, baselines=(0,), color="k"):
     """Spectrum as counts/s vs energy. ``spec`` is a products.Spectrum.
 
     ``per_baseline`` (a dict {id: Spectrum} from products.spectra_per_baseline)
@@ -233,15 +253,19 @@ def plot_arf(arf, ax=None, baseline_mode=True, scale="log"):
     with plt.style.context(_ACTIVE):
         fig, ax = _ax(ax, figsize=(7, 4))
         E = arf.energy_mid
-        ax.plot(E, arf.total, color="mediumvioletred", lw=2, zorder=10,
-                label="Total")
+        ax.plot(E, arf.total, color="mediumvioletred", lw=2, zorder=10, label="Total")
         if baseline_mode:
             cmap = plt.get_cmap("plasma")
             n = arf.n_baselines
             for i, (D, resp) in enumerate(arf.per_baseline):
-                ax.plot(E, resp, lw=1, zorder=2,
-                        color=cmap(i / max(n - 1, 1)),
-                        label=fr"$D={D:.2f}\,$m")
+                ax.plot(
+                    E,
+                    resp,
+                    lw=1,
+                    zorder=2,
+                    color=cmap(i / max(n - 1, 1)),
+                    label=rf"$D={D:.2f}\,$m",
+                )
         ax.set_xscale(scale)
         ax.set_yscale(scale)
         ax.set_xlim(np.min(E), np.max(E))
@@ -268,8 +292,7 @@ def _as_cube(rgb):
         span = rgb.span_uas
         bands = rgb.bands
     if len(channels) != 3:
-        raise ValueError(f"need exactly three channels (R, G, B); "
-                         f"got {len(channels)}.")
+        raise ValueError(f"need exactly three channels (R, G, B); got {len(channels)}.")
     shapes = {np.shape(c) for c in channels}
     if len(shapes) != 1:
         raise ValueError(f"the three channels must share a shape; got {shapes}.")
@@ -315,9 +338,11 @@ def white_balance(cube, mode="total", arf=None, bands=None):
         ref = np.array([cube[..., c].max() for c in range(3)], float)
     elif mode == "flux":
         if arf is None or bands is None:
-            raise ValueError('white_balance(mode="flux") needs both arf and '
-                             'bands (pass an RGBImage, which carries the '
-                             'bands, plus arf=...).')
+            raise ValueError(
+                'white_balance(mode="flux") needs both arf and '
+                "bands (pass an RGBImage, which carries the "
+                "bands, plus arf=...)."
+            )
         g = []
         for lo, hi in bands:
             m = (arf.energy_mid >= lo) & (arf.energy_mid < hi)
@@ -326,14 +351,17 @@ def white_balance(cube, mode="total", arf=None, bands=None):
         g = np.asarray(g, float)
         return g / g.max() if g.max() > 0 else np.ones(3)
     else:
-        raise ValueError(f'unknown white-balance mode {mode!r}; expected '
-                         f'"total", "peak", "flux" or "none".')
+        raise ValueError(
+            f"unknown white-balance mode {mode!r}; expected "
+            f'"total", "peak", "flux" or "none".'
+        )
     ref[ref <= 0] = 1.0
     return ref.max() / ref
 
 
-def rgb_composite(rgb, stretch="asinh", a=0.2, percentile=100.0, gains="total",
-                  black=90.0, arf=None):
+def rgb_composite(
+    rgb, stretch="asinh", a=0.2, percentile=100.0, gains="total", black=90.0, arf=None
+):
     """Composite three band images into a displayable (H, W, 3) RGB array.
 
     ``rgb`` is an :class:`~xrisalis.reconstruct.RGBImage` (from
@@ -367,7 +395,8 @@ def rgb_composite(rgb, stretch="asinh", a=0.2, percentile=100.0, gains="total",
     if black:
         for c in range(3):
             cube[..., c] = np.maximum(
-                cube[..., c] - np.percentile(cube[..., c], black), 0.0)
+                cube[..., c] - np.percentile(cube[..., c], black), 0.0
+            )
     if isinstance(gains, str):
         g = white_balance(cube, gains, arf=arf, bands=bands)
     else:
@@ -380,13 +409,13 @@ def rgb_composite(rgb, stretch="asinh", a=0.2, percentile=100.0, gains="total",
     elif stretch == "sqrt":
         x = np.sqrt(np.clip(x, 0.0, None))
     elif stretch not in ("linear", None):
-        raise ValueError(f'unknown stretch {stretch!r}; expected "asinh", '
-                         f'"sqrt" or "linear".')
+        raise ValueError(
+            f'unknown stretch {stretch!r}; expected "asinh", "sqrt" or "linear".'
+        )
     return np.clip(x, 0.0, 1.0)
 
 
-def plot_rgb(rgb, span_uas=None, ax=None, title=None, markers=None,
-             legend=True, **kw):
+def plot_rgb(rgb, span_uas=None, ax=None, title=None, markers=None, legend=True, **kw):
     """False-color image with axes in micro-arcsec and a band legend.
 
     ``rgb`` is an :class:`~xrisalis.reconstruct.RGBImage` or three arrays;
@@ -396,8 +425,10 @@ def plot_rgb(rgb, span_uas=None, ax=None, title=None, markers=None,
     cube, span, bands = _as_cube(rgb)
     span_uas = span if span_uas is None else span_uas
     if span_uas is None:
-        raise ValueError("pass span_uas — a bare list of arrays does not "
-                         "carry one (an RGBImage does).")
+        raise ValueError(
+            "pass span_uas — a bare list of arrays does not "
+            "carry one (an RGBImage does)."
+        )
     img = rgb_composite(rgb, **kw)
     with plt.style.context(_ACTIVE):
         fig, ax = _ax(ax, figsize=(4.6, 4.4))
@@ -407,19 +438,42 @@ def plot_rgb(rgb, span_uas=None, ax=None, title=None, markers=None,
         ax.set_ylabel(r"$\delta_d$ ($\mu$as)")
         if title:
             ax.set_title(title)
-        for label, pos, style in (markers or []):
+        for label, pos, style in markers or []:
             pos = np.atleast_2d(pos)
             ax.scatter(pos[:, 0], pos[:, 1], label=label, **style)
         if bands is not None and legend:
             from matplotlib.lines import Line2D
-            handles = [Line2D([], [], marker="s", ls="", ms=8, color=c,
-                              label=fr"{lo:g}$-${hi:g} keV")
-                       for c, (lo, hi) in zip("rgb", bands)]
-            handles += [Line2D([], [], marker=s.get("marker", "o"), ls="",
-                               color=s.get("c", "w"), label=lab)
-                        for lab, _, s in (markers or [])]
-            ax.legend(handles=handles, fontsize=8, loc="upper right",
-                      framealpha=0.35, labelcolor="w")
+
+            handles = [
+                Line2D(
+                    [],
+                    [],
+                    marker="s",
+                    ls="",
+                    ms=8,
+                    color=c,
+                    label=rf"{lo:g}$-${hi:g} keV",
+                )
+                for c, (lo, hi) in zip("rgb", bands)
+            ]
+            handles += [
+                Line2D(
+                    [],
+                    [],
+                    marker=s.get("marker", "o"),
+                    ls="",
+                    color=s.get("c", "w"),
+                    label=lab,
+                )
+                for lab, _, s in (markers or [])
+            ]
+            ax.legend(
+                handles=handles,
+                fontsize=8,
+                loc="upper right",
+                framealpha=0.35,
+                labelcolor="w",
+            )
         elif markers and legend:
             ax.legend(fontsize=8, loc="upper right")
         return ax
@@ -438,10 +492,9 @@ def plot_rgb_channels(rgb, figsize=(11, 3.4), cmap=None, **kw):
         for c in range(3):
             lab = names[c]
             if bands is not None:
-                lab += fr" ({bands[c][0]:g}$-${bands[c][1]:g} keV)"
+                lab += rf" ({bands[c][0]:g}$-${bands[c][1]:g} keV)"
             plot_image(cube[..., c], span, ax=axes[c], cmap=cmap, title=lab)
-        plot_rgb(rgb, span_uas=span, ax=axes[3], title="composite",
-                 legend=False, **kw)
+        plot_rgb(rgb, span_uas=span, ax=axes[3], title="composite", legend=False, **kw)
         for a in axes[1:]:
             a.set_ylabel("")
         return fig

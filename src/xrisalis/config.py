@@ -10,6 +10,7 @@ Unit convention (the single source of truth for the FITS boundary):
 Internally, the physics layer works in SI (radians, Joules, meters, seconds).
 Conversions happen only at the io/ boundary, never scattered through the code.
 """
+
 import numpy as np
 import astropy.constants as const
 import astropy.units as u
@@ -17,10 +18,10 @@ import astropy.units as u
 # fundamental constants (SI) — sourced from astropy.constants (CODATA), kept as
 # plain float SI values so the numeric core works on floats/ndarrays, not
 # Quantity objects.
-H = const.h.to_value(u.J * u.s)     # Planck constant    [J s]
-C = const.c.to_value(u.m / u.s)     # speed of light     [m/s]
-EV = (1.0 * u.eV).to_value(u.J)     # electron volt      [J]
-KEV = 1e3 * EV                      # kilo-electron volt [J]
+H = const.h.to_value(u.J * u.s)  # Planck constant    [J s]
+C = const.c.to_value(u.m / u.s)  # speed of light     [m/s]
+EV = (1.0 * u.eV).to_value(u.J)  # electron volt      [J]
+KEV = 1e3 * EV  # kilo-electron volt [J]
 
 # angle conversions
 DEG2RAD = np.pi / 180.0

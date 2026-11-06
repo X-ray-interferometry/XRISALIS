@@ -11,6 +11,7 @@ numeric core keeps working on floats/ndarrays (not Quantity objects):
 Bare numbers (and NumPy arrays) are passed through unchanged and interpreted in
 those default units, so existing float-based code keeps working.
 """
+
 from __future__ import annotations
 
 import numpy as np

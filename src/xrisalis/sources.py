@@ -16,6 +16,7 @@ NumPy (+ Pillow for non-FITS image files, imported lazily). The FITS loaders
 (``from_simput``/``from_fits_image``/``from_fits_cube``/``load_source``) use
 :mod:`xrisalis.io`, which depends on astropy (a required dependency).
 """
+
 from __future__ import annotations
 
 import warnings
@@ -86,21 +87,26 @@ def spectrum_from_model(model, e_range=(0.5, 10.0), n=200):
 
 def _is_lmfit_model(obj):
     """Duck-type an lmfit / nDspec ``Model`` (also matches composite models)."""
-    return (hasattr(obj, "eval") and hasattr(obj, "independent_vars")
-            and hasattr(obj, "make_params"))
+    return (
+        hasattr(obj, "eval")
+        and hasattr(obj, "independent_vars")
+        and hasattr(obj, "make_params")
+    )
 
 
 def _eval_lmfit(model, E, params=None, indep_var=None):
     """Evaluate an lmfit/nDspec model on energy grid ``E`` -> flux array."""
     iv = model.independent_vars
     name = indep_var or (iv[0] if iv else "energ")
-    F = model.eval(params, **{name: E}) if params is not None \
+    F = (
+        model.eval(params, **{name: E})
+        if params is not None
         else model.eval(**{name: E})
+    )
     return _strip(F)
 
 
-def spectrum_from_lmfit(model, params=None, e_range=(0.5, 10.0), n=200,
-                        indep_var=None):
+def spectrum_from_lmfit(model, params=None, e_range=(0.5, 10.0), n=200, indep_var=None):
     """Sample an lmfit / **nDspec** model as ``(energy_kev, fluxdensity)``.
 
     nDspec spectral models are ``lmfit.Model`` objects (single or composite),
@@ -129,12 +135,18 @@ def _as_spectrum(spectrum, e_grid_kev=None):
     all evaluated on ``e_grid_kev`` (default 0.5-10 keV, 200 pts). ``F`` is
     returned as a plain float array (photon/s/cm^2/keV; a Quantity is stripped).
     """
-    grid = (np.linspace(0.5, 10.0, 200) if e_grid_kev is None
-            else np.asarray(e_grid_kev, float))
-    if _is_lmfit_model(spectrum):                       # nDspec / lmfit model
+    grid = (
+        np.linspace(0.5, 10.0, 200)
+        if e_grid_kev is None
+        else np.asarray(e_grid_kev, float)
+    )
+    if _is_lmfit_model(spectrum):  # nDspec / lmfit model
         return grid, _eval_lmfit(spectrum, grid)
-    if (isinstance(spectrum, tuple) and len(spectrum) == 2
-            and _is_lmfit_model(spectrum[0])):          # (model, params)
+    if (
+        isinstance(spectrum, tuple)
+        and len(spectrum) == 2
+        and _is_lmfit_model(spectrum[0])
+    ):  # (model, params)
         return grid, _eval_lmfit(spectrum[0], grid, params=spectrum[1])
     if callable(spectrum):
         return grid, _strip(spectrum(grid))
@@ -183,14 +195,25 @@ class ImageMorphology(Morphology):
     (gnomonic) to sky coordinates, so an RA offset carries its 1/cos(dec):
     the image keeps its shape on the sky at any declination.
     """
-    def __init__(self, image, scale_arcsec, center_deg=(0.0, 0.0),
-                 rotation_deg=0.0):
+
+    def __init__(self, image, scale_arcsec, center_deg=(0.0, 0.0), rotation_deg=0.0):
         img = np.asarray(image, float)
         img = np.clip(img, 0, None)
         if rotation_deg:
-            from scipy.ndimage import rotate as _rotate      # lazy
-            img = np.clip(_rotate(img, float(rotation_deg), reshape=False,
-                                  order=1, mode="constant", cval=0.0), 0, None)
+            from scipy.ndimage import rotate as _rotate  # lazy
+
+            img = np.clip(
+                _rotate(
+                    img,
+                    float(rotation_deg),
+                    reshape=False,
+                    order=1,
+                    mode="constant",
+                    cval=0.0,
+                ),
+                0,
+                None,
+            )
         if img.sum() <= 0:
             raise ValueError("Image has no positive flux.")
         self.rotation_deg = float(rotation_deg)
@@ -208,18 +231,19 @@ class ImageMorphology(Morphology):
         jc = rng.uniform(-0.5, 0.5, n)
         alpha_as = (cols + jc - (self.nx - 1) / 2.0) * self.pix_arcsec
         delta_as = (rows + jr - (self.ny - 1) / 2.0) * self.pix_arcsec
-        return tangent_to_sky(alpha_as * ARCSEC2RAD, delta_as * ARCSEC2RAD,
-                              *self.center_deg)
+        return tangent_to_sky(
+            alpha_as * ARCSEC2RAD, delta_as * ARCSEC2RAD, *self.center_deg
+        )
 
     @property
     def centroid_deg(self):
-        ys, xs = np.mgrid[0:self.ny, 0:self.nx]
+        ys, xs = np.mgrid[0 : self.ny, 0 : self.nx]
         w = self.image / self.image.sum()
-        col = (w * xs).sum(); row = (w * ys).sum()
+        col = (w * xs).sum()
+        row = (w * ys).sum()
         a = (col - (self.nx - 1) / 2.0) * self.pix_arcsec
         d = (row - (self.ny - 1) / 2.0) * self.pix_arcsec
-        ra, dec = tangent_to_sky(a * ARCSEC2RAD, d * ARCSEC2RAD,
-                                 *self.center_deg)
+        ra, dec = tangent_to_sky(a * ARCSEC2RAD, d * ARCSEC2RAD, *self.center_deg)
         return float(ra), float(dec)
 
 
@@ -229,15 +253,17 @@ class ImageMorphology(Morphology):
 @dataclass
 class Component:
     """One spectral-spatial piece of a source (what the generator consumes)."""
+
     energy_kev: np.ndarray
-    fluxdensity: np.ndarray            # photon/s/cm^2/keV
+    fluxdensity: np.ndarray  # photon/s/cm^2/keV
     morphology: Morphology
-    lightcurve: object = None          # callable rate(t) or None (steady)
+    lightcurve: object = None  # callable rate(t) or None (steady)
     src_id: int = 0
 
 
 class SourceModel:
     """Base: a source that yields spectral-spatial components."""
+
     def components(self):
         raise NotImplementedError
 
@@ -257,8 +283,11 @@ class SourceModel:
         out = []
         for c in self.components():
             E, F = c.energy_kev, c.fluxdensity
-            out.append(0.5 * np.sum((F[1:] + F[:-1]) * np.diff(E)) if len(E) > 1
-                       else float(F[0]))
+            out.append(
+                0.5 * np.sum((F[1:] + F[:-1]) * np.diff(E))
+                if len(E) > 1
+                else float(F[0])
+            )
         return np.array(out)
 
 
@@ -271,25 +300,42 @@ class PointSource(SourceModel):
         self.src_id = src_id
 
     def components(self):
-        return [Component(self.E, self.F,
-                          PointMorphology(self.ra_deg, self.dec_deg),
-                          self.lightcurve, self.src_id)]
+        return [
+            Component(
+                self.E,
+                self.F,
+                PointMorphology(self.ra_deg, self.dec_deg),
+                self.lightcurve,
+                self.src_id,
+            )
+        ]
 
 
 class ImageSource(SourceModel):
     """Extended source: a brightness image with a (separable) spectrum."""
-    def __init__(self, image, spectrum, scale_arcsec, center_deg=(0.0, 0.0),
-                 lightcurve=None, src_id=0, rotation_deg=0.0):
-        self.morph = ImageMorphology(image, to_arcsec(scale_arcsec),
-                                     _center(center_deg),
-                                     rotation_deg=to_deg(rotation_deg))
+
+    def __init__(
+        self,
+        image,
+        spectrum,
+        scale_arcsec,
+        center_deg=(0.0, 0.0),
+        lightcurve=None,
+        src_id=0,
+        rotation_deg=0.0,
+    ):
+        self.morph = ImageMorphology(
+            image,
+            to_arcsec(scale_arcsec),
+            _center(center_deg),
+            rotation_deg=to_deg(rotation_deg),
+        )
         self.E, self.F = _as_spectrum(spectrum)
         self.lightcurve = lightcurve
         self.src_id = src_id
 
     def components(self):
-        return [Component(self.E, self.F, self.morph, self.lightcurve,
-                          self.src_id)]
+        return [Component(self.E, self.F, self.morph, self.lightcurve, self.src_id)]
 
 
 class CubeSource(SourceModel):
@@ -299,13 +345,23 @@ class CubeSource(SourceModel):
     weights a monochromatic line at its energy, so the ARF folding naturally
     weights the energy-dependent morphology.
     """
-    def __init__(self, energies_kev, images, scale_arcsec, center_deg=(0.0, 0.0),
-                 norm=1.0, width_frac=0.01, lightcurve=None, src_id=0):
+
+    def __init__(
+        self,
+        energies_kev,
+        images,
+        scale_arcsec,
+        center_deg=(0.0, 0.0),
+        norm=1.0,
+        width_frac=0.01,
+        lightcurve=None,
+        src_id=0,
+    ):
         self.energies = np.atleast_1d(to_kev(energies_kev))
         self.images = np.clip(np.asarray(images, float), 0, None)
         self.scale_arcsec = to_arcsec(scale_arcsec)
         self.center_deg = _center(center_deg)
-        self.norm = float(norm)          # total photon flux [photon/s/cm^2]
+        self.norm = float(norm)  # total photon flux [photon/s/cm^2]
         self.width_frac = width_frac
         self.lightcurve = lightcurve
         self.src_id = src_id
@@ -321,16 +377,24 @@ class CubeSource(SourceModel):
             w = img.sum()
             if w <= 0:
                 continue
-            E, F = monochromatic(E_i, flux=self.norm * w / total,
-                                 width_frac=self.width_frac)
-            comps.append(Component(
-                E, F, ImageMorphology(img, self.scale_arcsec, self.center_deg),
-                self.lightcurve, self.src_id))
+            E, F = monochromatic(
+                E_i, flux=self.norm * w / total, width_frac=self.width_frac
+            )
+            comps.append(
+                Component(
+                    E,
+                    F,
+                    ImageMorphology(img, self.scale_arcsec, self.center_deg),
+                    self.lightcurve,
+                    self.src_id,
+                )
+            )
         return comps
 
 
 class CompositeSource(SourceModel):
     """A combination of source models (catalog / mixed inputs)."""
+
     def __init__(self, sources):
         self.sources = list(sources)
 
@@ -341,8 +405,15 @@ class CompositeSource(SourceModel):
         out = []
         for k, s in enumerate(self.sources):
             for c in s.components():
-                out.append(Component(c.energy_kev, c.fluxdensity, c.morphology,
-                                     c.lightcurve, src_id=k))
+                out.append(
+                    Component(
+                        c.energy_kev,
+                        c.fluxdensity,
+                        c.morphology,
+                        c.lightcurve,
+                        src_id=k,
+                    )
+                )
         return out
 
 
@@ -357,7 +428,7 @@ def point_source(ra_deg, dec_deg=None, spectrum=None, lightcurve=None):
     :class:`~astropy.coordinates.SkyCoord`.
     """
     if is_skycoord(ra_deg) and spectrum is None:
-        spectrum, dec_deg = dec_deg, None          # point_source(coord, spectrum)
+        spectrum, dec_deg = dec_deg, None  # point_source(coord, spectrum)
     return PointSource(ra_deg, dec_deg, spectrum, lightcurve)
 
 
@@ -369,7 +440,7 @@ def points(ra_deg, dec_deg=None, spectra=None, lightcurves=None):
     (in which case ``dec_deg`` carries the ``spectra`` list).
     """
     if is_skycoord(ra_deg) and spectra is None:
-        spectra, dec_deg = dec_deg, None           # points(skycoord_array, spectra)
+        spectra, dec_deg = dec_deg, None  # points(skycoord_array, spectra)
     if is_skycoord(ra_deg):
         ra_arr, dec_arr = to_radec_deg(ra_deg)
     else:
@@ -377,8 +448,9 @@ def points(ra_deg, dec_deg=None, spectra=None, lightcurves=None):
     ra_arr, dec_arr = np.atleast_1d(ra_arr), np.atleast_1d(dec_arr)
     n = len(ra_arr)
     lcs = lightcurves or [None] * n
-    return CompositeSource([PointSource(ra_arr[i], dec_arr[i], spectra[i], lcs[i])
-                            for i in range(n)])
+    return CompositeSource(
+        [PointSource(ra_arr[i], dec_arr[i], spectra[i], lcs[i]) for i in range(n)]
+    )
 
 
 def _table_column_deg(table, col):
@@ -387,12 +459,20 @@ def _table_column_deg(table, col):
     unit = getattr(c, "unit", None)
     if unit is not None:
         import astropy.units as u
+
         return (np.asarray(c) * unit).to_value(u.deg)
     return np.asarray(c, float)
 
 
-def points_from_table(table, ra_col="ra", dec_col="dec", spectrum=None,
-                      flux_col=None, spectra=None, lightcurves=None):
+def points_from_table(
+    table,
+    ra_col="ra",
+    dec_col="dec",
+    spectrum=None,
+    flux_col=None,
+    spectra=None,
+    lightcurves=None,
+):
     """Point-source catalog from a table (e.g. an ``astroquery``/VizieR result).
 
     Works with any :class:`astropy.table.Table` (or mapping of columns) — the
@@ -429,31 +509,36 @@ def points_from_table(table, ra_col="ra", dec_col="dec", spectrum=None,
 def _disc_image(radius_frac=0.8, npix=201):
     ax = np.linspace(-1, 1, npix)
     X, Y = np.meshgrid(ax, ax)
-    return (X ** 2 + Y ** 2 <= radius_frac ** 2).astype(float)
+    return (X**2 + Y**2 <= radius_frac**2).astype(float)
 
 
 def _gaussian_image(sigma_frac=0.25, npix=201):
     ax = np.linspace(-1, 1, npix)
     X, Y = np.meshgrid(ax, ax)
-    return np.exp(-(X ** 2 + Y ** 2) / (2 * sigma_frac ** 2))
+    return np.exp(-(X**2 + Y**2) / (2 * sigma_frac**2))
 
 
-def disc(spectrum, diameter_arcsec, center_deg=(0.0, 0.0), npix=201,
-         lightcurve=None):
+def disc(spectrum, diameter_arcsec, center_deg=(0.0, 0.0), npix=201, lightcurve=None):
     """A uniform disc of the given angular diameter.
 
     The disc fills its ``npix`` x ``npix`` image edge to edge, so the image span
     equals the disc diameter. (Before 2026-10-16 the disc was drawn at 0.8 of
     the image span, i.e. its true diameter was ``0.8 * diameter_arcsec``.)
     """
-    return ImageSource(_disc_image(radius_frac=1.0, npix=npix), spectrum,
-                       diameter_arcsec, center_deg, lightcurve)
+    return ImageSource(
+        _disc_image(radius_frac=1.0, npix=npix),
+        spectrum,
+        diameter_arcsec,
+        center_deg,
+        lightcurve,
+    )
 
 
-def gaussian_source(spectrum, fwhm_arcsec, center_deg=(0.0, 0.0), npix=201,
-                    lightcurve=None):
+def gaussian_source(
+    spectrum, fwhm_arcsec, center_deg=(0.0, 0.0), npix=201, lightcurve=None
+):
     """A circular Gaussian blob of the given FWHM."""
-    sigma_frac = 0.2                                   # in image [-1,1] units
+    sigma_frac = 0.2  # in image [-1,1] units
     img = _gaussian_image(sigma_frac=sigma_frac, npix=npix)
     # image full-width (2 units) maps to `span` arcsec; FWHM = 2.3548*sigma_frac
     # in those units, i.e. (2.3548*sigma_frac/2)*span arcsec. Solve for span:
@@ -461,15 +546,29 @@ def gaussian_source(spectrum, fwhm_arcsec, center_deg=(0.0, 0.0), npix=201,
     return ImageSource(img, spectrum, span, center_deg, lightcurve)
 
 
-def image_source(image, spectrum, scale_arcsec, center_deg=(0.0, 0.0),
-                 lightcurve=None, rotation_deg=0.0):
+def image_source(
+    image,
+    spectrum,
+    scale_arcsec,
+    center_deg=(0.0, 0.0),
+    lightcurve=None,
+    rotation_deg=0.0,
+):
     """Extended source from an in-memory brightness array."""
-    return ImageSource(image, spectrum, scale_arcsec, center_deg, lightcurve,
-                       rotation_deg=rotation_deg)
+    return ImageSource(
+        image, spectrum, scale_arcsec, center_deg, lightcurve, rotation_deg=rotation_deg
+    )
 
 
-def model_image_source(model2d, spectrum, extent_arcsec, npix=201,
-                       center_deg=(0.0, 0.0), lightcurve=None, rotation_deg=0.0):
+def model_image_source(
+    model2d,
+    spectrum,
+    extent_arcsec,
+    npix=201,
+    center_deg=(0.0, 0.0),
+    lightcurve=None,
+    rotation_deg=0.0,
+):
     """Extended source whose morphology is an :mod:`astropy.modeling` 2-D model.
 
     ``model2d`` (e.g. ``Gaussian2D``, ``Sersic2D``, ``Disk2D``, or a compound
@@ -483,29 +582,39 @@ def model_image_source(model2d, spectrum, extent_arcsec, npix=201,
     ax = np.linspace(-extent / 2.0, extent / 2.0, npix)
     X, Y = np.meshgrid(ax, ax)
     img = np.clip(np.nan_to_num(np.asarray(model2d(X, Y), float)), 0, None)
-    return ImageSource(img, spectrum, extent, center_deg=center_deg,
-                       lightcurve=lightcurve, rotation_deg=rotation_deg)
+    return ImageSource(
+        img,
+        spectrum,
+        extent,
+        center_deg=center_deg,
+        lightcurve=lightcurve,
+        rotation_deg=rotation_deg,
+    )
 
 
-def from_image_file(path, spectrum, scale_arcsec, center_deg=(0.0, 0.0),
-                    lightcurve=None):
+def from_image_file(
+    path, spectrum, scale_arcsec, center_deg=(0.0, 0.0), lightcurve=None
+):
     """Extended source from an image file (PNG/JPG/…) read as grayscale.
 
     The picture appears on the sky as it does in an image viewer (top = North),
     so the top-down pixel rows are flipped to the +Dec-up convention.
     """
-    from PIL import Image                      # lazy
+    from PIL import Image  # lazy
+
     img = np.flipud(np.asarray(Image.open(path).convert("L"), float))
     return ImageSource(img, spectrum, scale_arcsec, center_deg, lightcurve)
 
 
-def cube_source(energies_kev, images, scale_arcsec, center_deg=(0.0, 0.0),
-                norm=1.0, lightcurve=None):
-    return CubeSource(energies_kev, images, scale_arcsec, center_deg,
-                      norm=norm, lightcurve=lightcurve)
+def cube_source(
+    energies_kev, images, scale_arcsec, center_deg=(0.0, 0.0), norm=1.0, lightcurve=None
+):
+    return CubeSource(
+        energies_kev, images, scale_arcsec, center_deg, norm=norm, lightcurve=lightcurve
+    )
 
 
-KEV2ERG = 1.602176634e-9        # 1 keV in erg (for SIMPUT flux normalization)
+KEV2ERG = 1.602176634e-9  # 1 keV in erg (for SIMPUT flux normalization)
 
 
 def _lightcurve_from_timing(timing):
@@ -521,8 +630,9 @@ def _lightcurve_from_timing(timing):
         t, f = np.asarray(timing["time"], float), np.asarray(timing["flux"], float)
         f = np.clip(f, 0, None)
         mean = f.mean() if f.size and f.mean() > 0 else 1.0
-        return lambda tt: np.interp(tt, t, f / mean, left=f[0] / mean,
-                                    right=f[-1] / mean)
+        return lambda tt: np.interp(
+            tt, t, f / mean, left=f[0] / mean, right=f[-1] / mean
+        )
     if timing["kind"] == "periodic":
         ph, f = np.asarray(timing["phase"], float), np.asarray(timing["flux"], float)
         f = np.clip(f, 0, None)
@@ -535,6 +645,7 @@ def _lightcurve_from_timing(timing):
         def rate(tt):
             phase = ((np.asarray(tt, float) / period) + phase0) % 1.0
             return np.interp(phase, php, fp)
+
         return rate
     return None
 
@@ -548,14 +659,16 @@ def _normalize_to_flux(E, F, flux, e_min, e_max):
     """
     if flux is None or e_min is None or e_max is None or e_max <= e_min:
         return F
-    E = np.asarray(E, float); F = np.asarray(F, float)
+    E = np.asarray(E, float)
+    F = np.asarray(F, float)
     m = (E >= e_min) & (E <= e_max)
     if m.sum() < 2:
         return F
     Eb, Fb = E[m], F[m]
-    energy_flux_kev = 0.5 * np.sum((Eb[1:] * Fb[1:] + Eb[:-1] * Fb[:-1])
-                                   * np.diff(Eb))          # keV/s/cm^2
-    cur = energy_flux_kev * KEV2ERG                        # erg/s/cm^2
+    energy_flux_kev = 0.5 * np.sum(
+        (Eb[1:] * Fb[1:] + Eb[:-1] * Fb[:-1]) * np.diff(Eb)
+    )  # keV/s/cm^2
+    cur = energy_flux_kev * KEV2ERG  # erg/s/cm^2
     if cur <= 0:
         return F
     return F * (float(flux) / cur)
@@ -573,22 +686,29 @@ def from_simput(path):
     s = SimputSource.read(path)
     models = []
     for e in s.entries:
-        F = _normalize_to_flux(e.energy_kev, e.fluxdensity, e.flux,
-                               e.e_min, e.e_max)
+        F = _normalize_to_flux(e.energy_kev, e.fluxdensity, e.flux, e.e_min, e.e_max)
         lc = _lightcurve_from_timing(e.timing)
         if e.image is not None:
-            models.append(ImageSource(
-                e.image, (e.energy_kev, F), e.image_scale_arcsec,
-                center_deg=e.image_center_deg or (e.ra_deg, e.dec_deg),
-                lightcurve=lc, rotation_deg=e.image_rotation_deg))
+            models.append(
+                ImageSource(
+                    e.image,
+                    (e.energy_kev, F),
+                    e.image_scale_arcsec,
+                    center_deg=e.image_center_deg or (e.ra_deg, e.dec_deg),
+                    lightcurve=lc,
+                    rotation_deg=e.image_rotation_deg,
+                )
+            )
         else:
-            models.append(PointSource(e.ra_deg, e.dec_deg, (e.energy_kev, F),
-                                      lightcurve=lc))
+            models.append(
+                PointSource(e.ra_deg, e.dec_deg, (e.energy_kev, F), lightcurve=lc)
+            )
     return CompositeSource(models)
 
 
-def from_fits_image(path, spectrum=None, scale_arcsec=None, center_deg=None,
-                    lightcurve=None):
+def from_fits_image(
+    path, spectrum=None, scale_arcsec=None, center_deg=None, lightcurve=None
+):
     """Extended source from a standalone FITS image (2-D).
 
     Angular scale/center come from the image WCS (or ``CDELT``/``IMGSCAL``, or
@@ -597,16 +717,17 @@ def from_fits_image(path, spectrum=None, scale_arcsec=None, center_deg=None,
     """
     img, scale, wcs_center, rot = read_fits_image(path, scale_arcsec=scale_arcsec)
     if spectrum is None:
-        warnings.warn("from_fits_image: no spectrum given; using a flat "
-                      "0.5-10 keV spectrum.")
+        warnings.warn(
+            "from_fits_image: no spectrum given; using a flat 0.5-10 keV spectrum."
+        )
         spectrum = flat_spectrum()
     center = center_deg if center_deg is not None else wcs_center
-    return ImageSource(img, spectrum, scale, center_deg=center,
-                       lightcurve=lightcurve, rotation_deg=rot)
+    return ImageSource(
+        img, spectrum, scale, center_deg=center, lightcurve=lightcurve, rotation_deg=rot
+    )
 
 
-def from_fits_cube(path, norm=1.0, center_deg=None, scale_arcsec=None,
-                   lightcurve=None):
+def from_fits_cube(path, norm=1.0, center_deg=None, scale_arcsec=None, lightcurve=None):
     """Data-cube source F(alpha, delta, E) from a 3-D FITS cube.
 
     Per-slice energies come from a spectral WCS axis or an ``ENERGIES`` table;
@@ -617,8 +738,9 @@ def from_fits_cube(path, norm=1.0, center_deg=None, scale_arcsec=None,
     if scale_arcsec is not None:
         scale = scale_arcsec
     center = center_deg if center_deg is not None else wcs_center
-    return CubeSource(energies, cube, scale, center_deg=center, norm=norm,
-                      lightcurve=lightcurve)
+    return CubeSource(
+        energies, cube, scale, center_deg=center, norm=norm, lightcurve=lightcurve
+    )
 
 
 def load_source(path, kind="auto", **overrides):
@@ -666,12 +788,15 @@ def load_source(path, kind="auto", **overrides):
                 else:
                     raise ValueError(
                         f"Could not identify a source in {path!r}; found HDUs "
-                        f"{names}. Pass kind='simput'|'image'|'cube' to force.")
+                        f"{names}. Pass kind='simput'|'image'|'cube' to force."
+                    )
 
     if kind == "simput":
         if overrides:
-            warnings.warn(f"load_source: ignoring {list(overrides)} for a "
-                          "SIMPUT catalog (its parameters come from the file).")
+            warnings.warn(
+                f"load_source: ignoring {list(overrides)} for a "
+                "SIMPUT catalog (its parameters come from the file)."
+            )
         return from_simput(path)
     if kind == "cube":
         return from_fits_cube(path, **overrides)

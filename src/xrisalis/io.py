@@ -14,7 +14,7 @@ from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 from dataclasses import dataclass, field
 import numpy as np
-from .config import KEV, DEG2RAD, H, C
+from .config import KEV, H, C
 
 
 # ==========================================================================
@@ -45,8 +45,10 @@ def provenance_header(history=None, extra=None, seed=None):
     h = fits.Header()
     h["ORIGIN"] = ("XRISALIS", "X-ray interferometry sim & analysis")
     h["XRIVERS"] = (str(XRI_VERSION), "XRISALIS version")
-    h["DATE"] = (_dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
-                 "File creation UTC")
+    h["DATE"] = (
+        _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        "File creation UTC",
+    )
     h["TELESCOP"] = TELESCOP
     h["INSTRUME"] = INSTRUME
     if seed is not None:
@@ -55,7 +57,7 @@ def provenance_header(history=None, extra=None, seed=None):
         for k, v in extra.items():
             h[k] = v
     if history:
-        for line in ([history] if isinstance(history, str) else history):
+        for line in [history] if isinstance(history, str) else history:
             h.add_history(line)
     return h
 
@@ -71,21 +73,23 @@ def col(name, fmt, array, unit=None):
     """Thin wrapper around fits.Column with an optional unit."""
     return fits.Column(name=name, format=fmt, array=array, unit=unit)
 
+
 # ==========================================================================
 # from photon_list.py
 # ==========================================================================
 
+
 @dataclass
 class PhotonList:
-    time: np.ndarray            # [s]
-    energy_kev: np.ndarray      # [keV]
-    ra_deg: np.ndarray          # [deg]
-    dec_deg: np.ndarray         # [deg]
-    src_id: np.ndarray = None   # [-]
+    time: np.ndarray  # [s]
+    energy_kev: np.ndarray  # [keV]
+    ra_deg: np.ndarray  # [deg]
+    dec_deg: np.ndarray  # [deg]
+    src_id: np.ndarray = None  # [-]
     baseline_id: np.ndarray = None
     exposure: float = None
-    ra_pnt: float = 0.0         # nominal pointing RA  [deg] (tangent point)
-    dec_pnt: float = 0.0        # nominal pointing Dec [deg]
+    ra_pnt: float = 0.0  # nominal pointing RA  [deg] (tangent point)
+    dec_pnt: float = 0.0  # nominal pointing Dec [deg]
     meta: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -118,8 +122,8 @@ class PhotonList:
         (:func:`xrisalis.simulate.off_axis_angles_2d`).
         """
         from .coords import sky_to_tangent
-        xi, eta = sky_to_tangent(self.ra_deg, self.dec_deg,
-                                 self.ra_pnt, self.dec_pnt)
+
+        xi, eta = sky_to_tangent(self.ra_deg, self.dec_deg, self.ra_pnt, self.dec_pnt)
         return np.column_stack((eta, xi))
 
     # --- io ------------------------------------------------------------------
@@ -132,8 +136,9 @@ class PhotonList:
             col("SRC_ID", "J", self.src_id),
             col("BASELINE_ID", "I", self.baseline_id),
         ]
-        hdr = provenance_header(history="PhotonList (generate stage)",
-                                seed=self.meta.get("seed"))
+        hdr = provenance_header(
+            history="PhotonList (generate stage)", seed=self.meta.get("seed")
+        )
         hdr["EXTNAME"] = "PHOTONS"
         if self.exposure is not None:
             hdr["EXPOSURE"] = (float(self.exposure), "Exposure time [s]")
@@ -151,8 +156,10 @@ class PhotonList:
             h = hdul["PHOTONS"]
             d = h.data
             obj = cls(
-                time=d["TIME"], energy_kev=d["ENERGY"],
-                ra_deg=d["RA"], dec_deg=d["DEC"],
+                time=d["TIME"],
+                energy_kev=d["ENERGY"],
+                ra_deg=d["RA"],
+                dec_deg=d["DEC"],
                 src_id=d["SRC_ID"] if "SRC_ID" in d.names else None,
                 baseline_id=d["BASELINE_ID"] if "BASELINE_ID" in d.names else None,
                 exposure=h.header.get("EXPOSURE"),
@@ -161,41 +168,43 @@ class PhotonList:
             )
         return obj
 
+
 # ==========================================================================
 # from event_list.py
 # ==========================================================================
 
+
 @dataclass
 class EventList:
-    time: np.ndarray          # read-out time [s]
-    energy_kev: np.ndarray    # channel-mapped energy [keV]
-    dety: np.ndarray          # detector fringe-axis position [m]
-    detz: np.ndarray          # detector cross-axis position [m]
-    baseline_id: np.ndarray   # [-]
-    pi: np.ndarray = None      # detector channel [-]
+    time: np.ndarray  # read-out time [s]
+    energy_kev: np.ndarray  # channel-mapped energy [keV]
+    dety: np.ndarray  # detector fringe-axis position [m]
+    detz: np.ndarray  # detector cross-axis position [m]
+    baseline_id: np.ndarray  # [-]
+    pi: np.ndarray = None  # detector channel [-]
     true_energy_kev: np.ndarray = None  # simulation ground truth [keV] (optional)
     ra_deg: np.ndarray = None
     dec_deg: np.ndarray = None
-    pointing: np.ndarray = None    # (T,3) pitch,yaw,roll [rad]; row = int(time/time_step)
+    pointing: np.ndarray = None  # (T,3) pitch,yaw,roll [rad]; row = int(time/time_step)
     #   pitch/yaw are tangent-plane offsets (North, East) from (ra_pnt, dec_pnt)
-    ra_pnt: float = 0.0            # nominal pointing RA  [deg] (tangent point)
-    dec_pnt: float = 0.0           # nominal pointing Dec [deg]
-    time_step: float = 1.0         # attitude sampling interval [s] (POINTING row spacing)
-    ebounds: dict = None           # {'CHANNEL','E_MIN','E_MAX'}
+    ra_pnt: float = 0.0  # nominal pointing RA  [deg] (tangent point)
+    dec_pnt: float = 0.0  # nominal pointing Dec [deg]
+    time_step: float = 1.0  # attitude sampling interval [s] (POINTING row spacing)
+    ebounds: dict = None  # {'CHANNEL','E_MIN','E_MAX'}
     exposure: float = None
-    fov: float = None              # derived imaging field of view [rad] (half-angle)
-    slat_id: np.ndarray = None     # slatted-mirror comb patch index per photon (-1 = none)
+    fov: float = None  # derived imaging field of view [rad] (half-angle)
+    slat_id: np.ndarray = None  # slatted-mirror comb patch index per photon (-1 = none)
     # multi-chip focal-plane coordinates (optional; see xrisalis.detector).
     # Image/ds9 convention: x_img <- DETY (fringe axis), y_img <- DETZ (cross
     # axis), matching the spacecraft/optical design. So CHIPX/FOCX run with DETY
     # and CHIPY/FOCY run with DETZ.
-    chip_id: np.ndarray = None     # chip each photon landed on (-1 if none)
-    chipx: np.ndarray = None       # within-chip pixel column [pix]  (x_img, from DETY)
-    chipy: np.ndarray = None       # within-chip pixel row [pix]     (y_img, from DETZ)
-    chipx_m: np.ndarray = None     # within-chip position from corner [m] (DETY)
-    chipy_m: np.ndarray = None     # within-chip position from corner [m] (DETZ)
-    focx: np.ndarray = None        # total focal-plane x (fringe/DETY axis) [m]
-    focy: np.ndarray = None        # total focal-plane y (cross/DETZ axis) [m]
+    chip_id: np.ndarray = None  # chip each photon landed on (-1 if none)
+    chipx: np.ndarray = None  # within-chip pixel column [pix]  (x_img, from DETY)
+    chipy: np.ndarray = None  # within-chip pixel row [pix]     (y_img, from DETZ)
+    chipx_m: np.ndarray = None  # within-chip position from corner [m] (DETY)
+    chipy_m: np.ndarray = None  # within-chip position from corner [m] (DETZ)
+    focx: np.ndarray = None  # total focal-plane x (fringe/DETY axis) [m]
+    focy: np.ndarray = None  # total focal-plane y (cross/DETZ axis) [m]
     header_extra: dict = field(default_factory=dict)
     meta: dict = field(default_factory=dict)
 
@@ -204,8 +213,9 @@ class EventList:
         n = self.time.size
         self.energy_kev = np.asarray(self.energy_kev, float)
         self.dety = np.asarray(self.dety, float)
-        self.detz = np.asarray(self.detz, float) if self.detz is not None \
-            else np.zeros(n)
+        self.detz = (
+            np.asarray(self.detz, float) if self.detz is not None else np.zeros(n)
+        )
         self.baseline_id = np.asarray(self.baseline_id, np.int16)
         if self.pi is None:
             self.pi = np.full(n, -1, dtype=np.int32)
@@ -265,20 +275,29 @@ class EventList:
         arr = attitude
         if not isinstance(arr, np.ndarray):
             from .pointing import as_pointing
+
             p = as_pointing(attitude)
             if p is None:
                 return self.pointing
-            n_t = (self.pointing.shape[0] if self.pointing is not None
-                   else int(np.max(self.time) / self.time_step) + 2)
+            n_t = (
+                self.pointing.shape[0]
+                if self.pointing is not None
+                else int(np.max(self.time) / self.time_step) + 2
+            )
             arr = p(np.arange(n_t, dtype=float) * self.time_step)
         arr = np.atleast_2d(np.asarray(arr, dtype=float))
-        if arr.shape[1] == 2:                    # no roll supplied -> keep ours
-            roll = (self.pointing[:arr.shape[0], 2] if self.pointing is not None
-                    else np.zeros(arr.shape[0]))
+        if arr.shape[1] == 2:  # no roll supplied -> keep ours
+            roll = (
+                self.pointing[: arr.shape[0], 2]
+                if self.pointing is not None
+                else np.zeros(arr.shape[0])
+            )
             arr = np.column_stack([arr, roll])
         if arr.shape[1] != 3:
-            raise ValueError("attitude must have 2 (pitch, yaw) or 3 "
-                             f"(pitch, yaw, roll) columns; got {arr.shape[1]}")
+            raise ValueError(
+                "attitude must have 2 (pitch, yaw) or 3 "
+                f"(pitch, yaw, roll) columns; got {arr.shape[1]}"
+            )
         return arr
 
     def _attitude_index(self, stream):
@@ -289,6 +308,7 @@ class EventList:
         attitude timeline whenever ``time_step != 1``.
         """
         from .pointing import attitude_index
+
         return attitude_index(self.time, self.time_step, stream.shape[0])
 
     def roll_per_event_from(self, attitude=None):
@@ -338,6 +358,7 @@ class EventList:
     def offsets_to_radec(self, pitch_yaw):
         """Tangent-plane ``(pitch, yaw)`` [rad] -> sky ``(ra_deg, dec_deg)``."""
         from .coords import tangent_to_sky
+
         p = np.asarray(pitch_yaw, float)
         ra, dec = tangent_to_sky(p[..., 1], p[..., 0], self.ra_pnt, self.dec_pnt)
         return ra, dec
@@ -345,6 +366,7 @@ class EventList:
     def radec_to_offsets(self, ra_deg, dec_deg):
         """Sky ``(ra_deg, dec_deg)`` -> tangent-plane ``(pitch, yaw)`` [rad]."""
         from .coords import sky_to_tangent
+
         xi, eta = sky_to_tangent(ra_deg, dec_deg, self.ra_pnt, self.dec_pnt)
         return np.stack((np.asarray(eta, float), np.asarray(xi, float)), axis=-1)
 
@@ -375,15 +397,31 @@ class EventList:
         ``energy_kev=`` and ``baseline_ids=`` directly.
         """
         import copy as _copy
+
         n = len(self)
         idx = np.asarray(mask)
         if idx.dtype == bool and idx.size != n:
             raise ValueError(f"boolean mask has {idx.size} entries for {n} events")
         out = _copy.copy(self)
-        for name in ("time", "energy_kev", "dety", "detz", "baseline_id", "pi",
-                     "true_energy_kev", "ra_deg", "dec_deg", "slat_id",
-                     "chip_id", "chipx", "chipy", "chipx_m", "chipy_m",
-                     "focx", "focy"):
+        for name in (
+            "time",
+            "energy_kev",
+            "dety",
+            "detz",
+            "baseline_id",
+            "pi",
+            "true_energy_kev",
+            "ra_deg",
+            "dec_deg",
+            "slat_id",
+            "chip_id",
+            "chipx",
+            "chipy",
+            "chipx_m",
+            "chipy_m",
+            "focx",
+            "focy",
+        ):
             col_ = getattr(self, name, None)
             if col_ is not None and np.ndim(col_) == 1 and np.size(col_) == n:
                 setattr(out, name, np.asarray(col_)[idx])
@@ -407,7 +445,7 @@ class EventList:
             cols.append(col("TRUE_ENERGY", "E", self.true_energy_kev, "keV"))
         if self.slat_id is not None:
             cols.append(col("SLAT_ID", "J", self.slat_id))
-        if self.chip_id is not None:                 # multi-chip focal plane
+        if self.chip_id is not None:  # multi-chip focal plane
             cols.append(col("CHIP_ID", "J", self.chip_id))
             cols.append(col("CHIPX", "E", self.chipx, "pix"))
             cols.append(col("CHIPY", "E", self.chipy, "pix"))
@@ -415,8 +453,9 @@ class EventList:
             cols.append(col("CHIPY_M", "E", self.chipy_m, "m"))
             cols.append(col("FOCX", "E", self.focx, "m"))
             cols.append(col("FOCY", "E", self.focy, "m"))
-        hdr = provenance_header(history="EventList (redistribute stage)",
-                                seed=self.meta.get("seed"))
+        hdr = provenance_header(
+            history="EventList (redistribute stage)", seed=self.meta.get("seed")
+        )
         hdr["EXTNAME"] = "EVENTS"
         if self.exposure is not None:
             hdr["EXPOSURE"] = (float(self.exposure), "Exposure time [s]")
@@ -480,17 +519,20 @@ class EventList:
                 pointing = np.column_stack((pd["PITCH"], pd["YAW"], pd["ROLL"]))
                 if "TIMESTEP" in ph.header:
                     time_step = float(ph.header["TIMESTEP"])
-                elif len(pd["TIME"]) > 1:        # infer from the TIME column
+                elif len(pd["TIME"]) > 1:  # infer from the TIME column
                     time_step = float(pd["TIME"][1] - pd["TIME"][0])
             ebounds = None
             if "EBOUNDS" in hdul:
                 ed = hdul["EBOUNDS"].data
-                ebounds = {"CHANNEL": np.array(ed["CHANNEL"]),
-                           "E_MIN": np.array(ed["E_MIN"]),
-                           "E_MAX": np.array(ed["E_MAX"])}
+                ebounds = {
+                    "CHANNEL": np.array(ed["CHANNEL"]),
+                    "E_MIN": np.array(ed["E_MIN"]),
+                    "E_MAX": np.array(ed["E_MAX"]),
+                }
             names = d.names
             return cls(
-                time=d["TIME"], energy_kev=d["ENERGY"],
+                time=d["TIME"],
+                energy_kev=d["ENERGY"],
                 dety=d["DETY"] if "DETY" in names else np.zeros(len(d["TIME"])),
                 detz=d["DETZ"] if "DETZ" in names else None,
                 baseline_id=d["BASELINE_ID"],
@@ -498,10 +540,13 @@ class EventList:
                 true_energy_kev=d["TRUE_ENERGY"] if "TRUE_ENERGY" in names else None,
                 ra_deg=d["RA"] if "RA" in names else None,
                 dec_deg=d["DEC"] if "DEC" in names else None,
-                pointing=pointing, time_step=time_step, ebounds=ebounds,
+                pointing=pointing,
+                time_step=time_step,
+                ebounds=ebounds,
                 ra_pnt=float(hdr.get("RA_PNT", 0.0)),
                 dec_pnt=float(hdr.get("DEC_PNT", 0.0)),
-                exposure=hdr.get("EXPOSURE"), fov=hdr.get("FOV"),
+                exposure=hdr.get("EXPOSURE"),
+                fov=hdr.get("FOV"),
                 slat_id=d["SLAT_ID"] if "SLAT_ID" in names else None,
                 chip_id=d["CHIP_ID"] if "CHIP_ID" in names else None,
                 chipx=d["CHIPX"] if "CHIPX" in names else None,
@@ -512,18 +557,21 @@ class EventList:
                 focy=d["FOCY"] if "FOCY" in names else None,
             )
 
+
 # ==========================================================================
 # from responses.py
 # ==========================================================================
+
 
 # --------------------------------------------------------------------- ARF ---
 @dataclass
 class ARF:
     """Per-baseline ancillary response (effective area)."""
-    energ_lo: np.ndarray          # [keV]
-    energ_hi: np.ndarray          # [keV]
-    total: np.ndarray             # total effective area [cm^2]
-    per_baseline: list            # list of (D_meters, specresp[cm^2])
+
+    energ_lo: np.ndarray  # [keV]
+    energ_hi: np.ndarray  # [keV]
+    total: np.ndarray  # total effective area [cm^2]
+    per_baseline: list  # list of (D_meters, specresp[cm^2])
 
     @property
     def energy_mid(self):
@@ -559,12 +607,12 @@ class ARF:
 class RMF:
     energ_lo: np.ndarray
     energ_hi: np.ndarray
-    matrix: np.ndarray            # (n_energy, n_channel) redistribution matrix
+    matrix: np.ndarray  # (n_energy, n_channel) redistribution matrix
     f_chan: np.ndarray
     n_chan: np.ndarray
     channel: np.ndarray
-    e_min: np.ndarray             # channel lower energy [keV]
-    e_max: np.ndarray             # channel upper energy [keV]
+    e_min: np.ndarray  # channel lower energy [keV]
+    e_max: np.ndarray  # channel upper energy [keV]
 
     @property
     def channel_energy(self):
@@ -596,6 +644,7 @@ class RMF:
 # ==========================================================================
 # from source_readers.py — universal FITS source ingestion
 # ==========================================================================
+
 
 # --------------------------------------------------------------- utilities ---
 def _as_str(value):
@@ -644,9 +693,9 @@ def energy_to_kev(values, unit):
 _REF_RE = re.compile(
     r"^\s*(?P<file>[^\[\]]+?)?\s*"
     r"(?:\[(?P<ext>[^\],]+?)(?:,(?P<ver>[^\]]+))?\])?"
-    r"(?:\[(?P<filt>[^\]]+)\])?\s*$")
-_NAME_FILTER_RE = re.compile(r"""NAME\s*==\s*['"]?([^'"\]]+)['"]?""",
-                             re.IGNORECASE)
+    r"(?:\[(?P<filt>[^\]]+)\])?\s*$"
+)
+_NAME_FILTER_RE = re.compile(r"""NAME\s*==\s*['"]?([^'"\]]+)['"]?""", re.IGNORECASE)
 
 
 def _within_subtree(path, base_dir):
@@ -668,9 +717,14 @@ def _detach_hdu(hdu):
     for c in hdu.columns:
         arr = hdu.data[c.name]
         vla = ("P" in c.format.upper()) or ("Q" in c.format.upper())
-        out.append(fits.Column(
-            name=c.name, format=c.format, unit=c.unit,
-            array=np.array(list(arr), dtype=object) if vla else np.array(arr)))
+        out.append(
+            fits.Column(
+                name=c.name,
+                format=c.format,
+                unit=c.unit,
+                array=np.array(list(arr), dtype=object) if vla else np.array(arr),
+            )
+        )
     return fits.BinTableHDU.from_columns(out, header=hdu.header.copy())
 
 
@@ -706,16 +760,23 @@ def resolve_reference(ref, hdul, base_dir, cache=None):
     if not m:
         warnings.warn(f"Unparseable SIMPUT reference {s!r}; ignoring.")
         return None, None
-    fname, ext, ver, filt = (m.group("file"), m.group("ext"),
-                             m.group("ver"), m.group("filt"))
+    fname, ext, ver, filt = (
+        m.group("file"),
+        m.group("ext"),
+        m.group("ver"),
+        m.group("filt"),
+    )
 
     # optional per-catalog cache: each referenced HDU is detached once and
     # NAME filters use a prebuilt name -> row index (O(1) per reference
     # instead of copying + scanning the table for every source)
     ckey = None
     if cache is not None:
-        ckey = (os.path.realpath(os.path.join(base_dir, fname)) if fname
-                else None, ext, ver)
+        ckey = (
+            os.path.realpath(os.path.join(base_dir, fname)) if fname else None,
+            ext,
+            ver,
+        )
         if ckey in cache:
             return cache[ckey], _filter_row(cache[ckey], filt, ext, cache, ckey)
 
@@ -724,8 +785,10 @@ def resolve_reference(ref, hdul, base_dir, cache=None):
         if fname:
             path = os.path.join(base_dir, fname)
             if not (os.path.exists(path) and _within_subtree(path, base_dir)):
-                warnings.warn(f"External reference {fname!r} not found within "
-                              f"the source directory; ignoring.")
+                warnings.warn(
+                    f"External reference {fname!r} not found within "
+                    f"the source directory; ignoring."
+                )
                 return None, None
             owner = fits.open(path)
             src = owner
@@ -737,7 +800,7 @@ def resolve_reference(ref, hdul, base_dir, cache=None):
                 warnings.warn(f"Reference {s!r} has no extension; ignoring.")
                 return None, None
             key = (ext, int(ver)) if (ver and ver.strip().isdigit()) else ext
-            hdu = _detach_hdu(src[key])           # detach from the file
+            hdu = _detach_hdu(src[key])  # detach from the file
         except (KeyError, IndexError):
             warnings.warn(f"Reference target [{ext}] not found; ignoring.")
             return None, None
@@ -755,19 +818,17 @@ def _filter_row(hdu, filt, ext, cache=None, ckey=None):
     if not filt:
         return None
     nm = _NAME_FILTER_RE.search(filt)
-    if nm and hdu.data is not None and "NAME" in getattr(
-            hdu.columns, "names", []):
+    if nm and hdu.data is not None and "NAME" in getattr(hdu.columns, "names", []):
         index = None if cache is None else cache.get(("names", ckey))
         if index is None:
             index = {}
             for i, x in enumerate(hdu.data["NAME"]):
-                index.setdefault(_as_str(x).strip(), i)   # first match wins
+                index.setdefault(_as_str(x).strip(), i)  # first match wins
             if cache is not None:
                 cache[("names", ckey)] = index
         row = index.get(nm.group(1).strip())
         if row is None:
-            warnings.warn(f"No NAME=={nm.group(1)!r} row in [{ext}]; "
-                          "using first row.")
+            warnings.warn(f"No NAME=={nm.group(1)!r} row in [{ext}]; using first row.")
             row = 0
         return row
     if filt.strip().isdigit():
@@ -796,7 +857,7 @@ def read_fits_image(hdu_or_path, scale_arcsec=None, ext=0):
         hdr = hdu.header
         scale, center, rot = _image_scale_center(hdr, img.shape, scale_arcsec)
         if _east_left(hdr):
-            img = img[:, ::-1]          # xrisalis convention: columns -> +RA
+            img = img[:, ::-1]  # xrisalis convention: columns -> +RA
         return img, scale, center, rot
     finally:
         if own is not None:
@@ -828,8 +889,8 @@ def _image_scale_center(hdr, shape, scale_arcsec):
     ny, nx = shape
     w = _wcs_celestial(hdr)
     if w is not None:
-        px = proj_plane_pixel_scales(w) * 3600.0          # deg/pix -> arcsec
-        scale = float(np.max(px)) * max(nx, ny)           # largest-axis span
+        px = proj_plane_pixel_scales(w) * 3600.0  # deg/pix -> arcsec
+        scale = float(np.max(px)) * max(nx, ny)  # largest-axis span
         try:
             cen = w.wcs_pix2world([[(nx - 1) / 2.0, (ny - 1) / 2.0]], 0)[0]
             center = (float(cen[0]), float(cen[1]))
@@ -841,8 +902,11 @@ def _image_scale_center(hdr, shape, scale_arcsec):
     cdelt = hdr.get("CDELT1") or hdr.get("CDELT2")
     if cdelt:
         scale = abs(float(cdelt)) * 3600.0 * max(nx, ny)
-        return scale, (float(hdr.get("CRVAL1", 0.0)),
-                       float(hdr.get("CRVAL2", 0.0))), 0.0
+        return (
+            scale,
+            (float(hdr.get("CRVAL1", 0.0)), float(hdr.get("CRVAL2", 0.0))),
+            0.0,
+        )
     if hdr.get("IMGSCAL"):
         scale = abs(float(hdr["IMGSCAL"])) * max(nx, ny)
         return scale, (0.0, 0.0), 0.0
@@ -850,7 +914,8 @@ def _image_scale_center(hdr, shape, scale_arcsec):
         return float(scale_arcsec), (0.0, 0.0), 0.0
     raise ValueError(
         "Image has no WCS, no CDELT/IMGSCAL header, and no scale_arcsec was "
-        "given; cannot determine the angular scale.")
+        "given; cannot determine the angular scale."
+    )
 
 
 def _wcs_rotation_deg(w, flip=False):
@@ -902,25 +967,40 @@ def read_fits_cube(path):
     with fits.open(path) as hdul:
         cube_hdu = None
         for h in hdul:
-            if getattr(h, "is_image", False) and h.data is not None \
-                    and np.asarray(h.data).ndim == 3:
+            if (
+                getattr(h, "is_image", False)
+                and h.data is not None
+                and np.asarray(h.data).ndim == 3
+            ):
                 cube_hdu = h
                 break
         if cube_hdu is None:
             raise ValueError("No 3-D image HDU found for a spectral cube.")
-        cube = np.asarray(cube_hdu.data, float)          # (nE, ny, nx)
+        cube = np.asarray(cube_hdu.data, float)  # (nE, ny, nx)
         hdr = cube_hdu.header
         n_e, ny, nx = cube.shape
 
         scale, center, rot = _image_scale_center(hdr, (ny, nx), None)
         if _east_left(hdr):
-            cube = cube[:, :, ::-1]     # xrisalis convention: columns -> +RA
+            cube = cube[:, :, ::-1]  # xrisalis convention: columns -> +RA
         if rot:
             # bake the WCS rotation into the slices, exactly as ImageMorphology
             # does for a single image (scipy sense, bilinear, flux >= 0)
-            from scipy.ndimage import rotate as _rotate          # lazy
-            cube = np.clip(_rotate(cube, rot, axes=(2, 1), reshape=False,
-                                   order=1, mode="constant", cval=0.0), 0, None)
+            from scipy.ndimage import rotate as _rotate  # lazy
+
+            cube = np.clip(
+                _rotate(
+                    cube,
+                    rot,
+                    axes=(2, 1),
+                    reshape=False,
+                    order=1,
+                    mode="constant",
+                    cval=0.0,
+                ),
+                0,
+                None,
+            )
 
         energies = _cube_energies(hdr, hdul, n_e)
         return energies, cube, scale, center
@@ -935,19 +1015,24 @@ def _cube_energies(hdr, hdul, n_e):
             pix = np.zeros((n_e, w.naxis))
             pix[:, 2] = np.arange(n_e)
             world = w.wcs_pix2world(pix, 0)[:, 2]
-            unit = w.wcs.cunit[2].to_string() if w.wcs.cunit[2] else \
-                hdr.get("CUNIT3", "")
+            unit = (
+                w.wcs.cunit[2].to_string() if w.wcs.cunit[2] else hdr.get("CUNIT3", "")
+            )
             return energy_to_kev(world, unit)
         except Exception:
-            warnings.warn("Spectral WCS on axis 3 could not be evaluated; "
-                          "falling back to an ENERGIES table.")
+            warnings.warn(
+                "Spectral WCS on axis 3 could not be evaluated; "
+                "falling back to an ENERGIES table."
+            )
     if "ENERGIES" in hdul:
         et = hdul["ENERGIES"]
         col = "ENERGY" if "ENERGY" in et.columns.names else et.columns.names[0]
         unit = et.columns[col].unit or "keV"
         return energy_to_kev(np.asarray(et.data[col], float), unit)
-    warnings.warn("Cube has neither a spectral WCS nor an ENERGIES table; "
-                  "assuming 1 keV per slice.")
+    warnings.warn(
+        "Cube has neither a spectral WCS nor an ENERGIES table; "
+        "assuming 1 keV per slice."
+    )
     return np.ones(n_e)
 
 
@@ -982,28 +1067,36 @@ def read_timing(hdu):
         return None
     names = [n.upper() for n in hdu.columns.names]
     hdr = hdu.header
-    flux_col = next((c for c in hdu.columns.names
-                     if c.upper() in ("FLUX", "RATE")), None)
+    flux_col = next(
+        (c for c in hdu.columns.names if c.upper() in ("FLUX", "RATE")), None
+    )
     if "PHASE" in names and flux_col is not None:
         period = hdr.get("PERIOD")
         if period is None:
-            warnings.warn("Periodic TIMING extension has no PERIOD keyword; "
-                          "treating as steady.")
+            warnings.warn(
+                "Periodic TIMING extension has no PERIOD keyword; treating as steady."
+            )
             return None
-        return {"kind": "periodic",
-                "phase": np.asarray(hdu.data[hdu.columns.names[names.index(
-                    "PHASE")]], float),
-                "flux": np.asarray(hdu.data[flux_col], float),
-                "period": float(period) * _time_unit_to_seconds(hdr),
-                "phase0": float(hdr.get("PHASE0", 0.0))}
+        return {
+            "kind": "periodic",
+            "phase": np.asarray(
+                hdu.data[hdu.columns.names[names.index("PHASE")]], float
+            ),
+            "flux": np.asarray(hdu.data[flux_col], float),
+            "period": float(period) * _time_unit_to_seconds(hdr),
+            "phase0": float(hdr.get("PHASE0", 0.0)),
+        }
     if "TIME" in names and flux_col is not None:
         tcol = hdu.columns.names[names.index("TIME")]
         scale = _time_unit_to_seconds(hdr)
-        t = (np.asarray(hdu.data[tcol], float) + float(hdr.get("TIMEZERO", 0.0)))
+        t = np.asarray(hdu.data[tcol], float) + float(hdr.get("TIMEZERO", 0.0))
         t = t * scale
-        t = t - t.min()                 # anchor to the light-curve start [s]
-        return {"kind": "binned", "time": t,
-                "flux": np.asarray(hdu.data[flux_col], float)}
+        t = t - t.min()  # anchor to the light-curve start [s]
+        return {
+            "kind": "binned",
+            "time": t,
+            "flux": np.asarray(hdu.data[flux_col], float),
+        }
     warnings.warn("Unrecognized TIMING extension; ignoring.")
     return None
 
@@ -1012,19 +1105,20 @@ def read_timing(hdu):
 @dataclass
 class SimputEntry:
     """One resolved SIMPUT source: position, spectrum, optional image + timing."""
+
     src_id: int
     ra_deg: float
     dec_deg: float
     energy_kev: np.ndarray
     fluxdensity: np.ndarray
-    flux: float = None            # SRC_CAT FLUX [erg/s/cm^2] over [e_min,e_max]
+    flux: float = None  # SRC_CAT FLUX [erg/s/cm^2] over [e_min,e_max]
     e_min: float = None
     e_max: float = None
-    image: np.ndarray = None      # brightness array (extended sources)
+    image: np.ndarray = None  # brightness array (extended sources)
     image_scale_arcsec: float = None
     image_center_deg: tuple = None
     image_rotation_deg: float = 0.0
-    timing: dict = None           # descriptor from read_timing (or None)
+    timing: dict = None  # descriptor from read_timing (or None)
 
 
 @dataclass
@@ -1036,10 +1130,11 @@ class SimputSource:
     fields and ``n_sources`` are kept for backward compatibility with the
     point-catalog fast path in :func:`xrisalis.simulate.generate_photons`.
     """
+
     src_id: np.ndarray
     ra_deg: np.ndarray
     dec_deg: np.ndarray
-    spectra: list                 # list of (energy_kev, fluxdensity) per source
+    spectra: list  # list of (energy_kev, fluxdensity) per source
     entries: list = field(default_factory=list)
 
     @property
@@ -1059,7 +1154,7 @@ class SimputSource:
         """
         base_dir = os.path.dirname(os.path.abspath(path))
         entries = []
-        cache = {}                      # referenced HDUs, resolved once
+        cache = {}  # referenced HDUs, resolved once
         with fits.open(path) as hdul:
             cat = hdul["SRC_CAT"].data
             cols = cat.columns.names
@@ -1075,30 +1170,49 @@ class SimputSource:
                 e_max = _f(cell(row, "E_MAX"))
                 flux = _f(cell(row, "FLUX"))
 
-                E, F = _resolve_spectrum(cell(row, "SPECTRUM"), hdul, base_dir,
-                                         cache)
+                E, F = _resolve_spectrum(cell(row, "SPECTRUM"), hdul, base_dir, cache)
                 img = scale = center = None
                 rot = 0.0
                 imref = cell(row, "IMAGE")
                 if imref is not None and _as_str(imref).strip().upper() not in (
-                        "", "NULL"):
+                    "",
+                    "NULL",
+                ):
                     img, scale, center, rot = _resolve_image(
-                        imref, hdul, base_dir, ra, dec,
+                        imref,
+                        hdul,
+                        base_dir,
+                        ra,
+                        dec,
                         _f(cell(row, "IMGSCAL"), 1.0),
-                        _f(cell(row, "IMGROTA"), 0.0))
+                        _f(cell(row, "IMGROTA"), 0.0),
+                    )
                 timing = None
                 tmref = cell(row, "TIMING")
                 if tmref is not None and _as_str(tmref).strip().upper() not in (
-                        "", "NULL"):
+                    "",
+                    "NULL",
+                ):
                     thdu, _ = resolve_reference(tmref, hdul, base_dir, cache)
                     timing = read_timing(thdu)
 
-                entries.append(SimputEntry(
-                    src_id=sid, ra_deg=ra, dec_deg=dec,
-                    energy_kev=E, fluxdensity=F, flux=flux,
-                    e_min=e_min, e_max=e_max, image=img,
-                    image_scale_arcsec=scale, image_center_deg=center,
-                    image_rotation_deg=rot, timing=timing))
+                entries.append(
+                    SimputEntry(
+                        src_id=sid,
+                        ra_deg=ra,
+                        dec_deg=dec,
+                        energy_kev=E,
+                        fluxdensity=F,
+                        flux=flux,
+                        e_min=e_min,
+                        e_max=e_max,
+                        image=img,
+                        image_scale_arcsec=scale,
+                        image_center_deg=center,
+                        image_rotation_deg=rot,
+                        timing=timing,
+                    )
+                )
 
         src_id = np.array([e.src_id for e in entries])
         ra = np.array([e.ra_deg for e in entries], float)
@@ -1121,8 +1235,9 @@ def _resolve_spectrum(ref, hdul, base_dir, cache=None):
     """(energy_kev, fluxdensity) for a SPECTRUM reference; flat + warn on miss."""
     hdu, row = resolve_reference(ref, hdul, base_dir, cache)
     if hdu is None or hdu.data is None:
-        warnings.warn("Source has no resolvable SPECTRUM; using a flat "
-                      "1-10 keV spectrum.")
+        warnings.warn(
+            "Source has no resolvable SPECTRUM; using a flat 1-10 keV spectrum."
+        )
         E = np.linspace(0.5, 10.0, 100)
         return E, np.ones_like(E)
     r = 0 if row is None else row
@@ -1139,8 +1254,9 @@ def _resolve_image(ref, hdul, base_dir, ra, dec, imgscal, imgrota):
     the image's own angular size and ``IMGROTA`` adds to any WCS rotation."""
     hdu, _ = resolve_reference(ref, hdul, base_dir)
     if hdu is None or hdu.data is None:
-        warnings.warn("Source IMAGE reference did not resolve; treating as a "
-                      "point source.")
+        warnings.warn(
+            "Source IMAGE reference did not resolve; treating as a point source."
+        )
         return None, None, None, 0.0
     img, scale, _wcs_center, rot = read_fits_image(hdu)
     scale = scale * float(imgscal if imgscal else 1.0)

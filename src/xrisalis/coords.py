@@ -9,9 +9,11 @@ The formulas take differences in degrees first and use
 There is no automatic re-pointing: the nominal pointing is whatever the user
 defines (default ``(0, 0)``), and a source outside the field is not seen.
 """
+
 import numpy as np
 
 from .config import DEG2RAD, RAD2DEG
+
 
 def wrap_deg(x):
     """Wrap an angle difference [deg] into (-180, 180]."""
@@ -24,11 +26,10 @@ def sky_to_tangent(ra_deg, dec_deg, ra0_deg, dec0_deg):
     da = wrap_deg(np.asarray(ra_deg, float) - ra0_deg) * DEG2RAD
     dd = (np.asarray(dec_deg, float) - dec0_deg) * DEG2RAD
     d0, cd = dec0_deg * DEG2RAD, np.cos(np.asarray(dec_deg, float) * DEG2RAD)
-    h = 2.0 * np.sin(0.5 * da) ** 2                       # 1 - cos(d_alpha)
+    h = 2.0 * np.sin(0.5 * da) ** 2  # 1 - cos(d_alpha)
     with np.errstate(divide="ignore", invalid="ignore"):
         cosc = np.cos(dd) - np.cos(d0) * cd * h
-        return (cd * np.sin(da) / cosc,
-                (np.sin(dd) + np.sin(d0) * cd * h) / cosc)
+        return (cd * np.sin(da) / cosc, (np.sin(dd) + np.sin(d0) * cd * h) / cosc)
 
 
 def tangent_to_sky(xi, eta, ra0_deg, dec0_deg, wrap=False):

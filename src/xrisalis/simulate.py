@@ -19,6 +19,7 @@ from .pointing import attitude_index
 # from fringes.py
 # ==========================================================================
 
+
 def fresnel_diffraction(wavelength, baseline, y_pos=None, samples=1):
     """Fresnel diffraction intensity for a slit of a given baseline.
 
@@ -56,10 +57,17 @@ def fresnel_diffraction(wavelength, baseline, y_pos=None, samples=1):
     return intensity, u
 
 
-def sample_detector_positions(baseline, energies_j, thetas, rng=None,
-                              pure_diffraction=False, pure_fringes=False,
-                              max_iter=5000, on_unplaceable="drop",
-                              return_slat=False):
+def sample_detector_positions(
+    baseline,
+    energies_j,
+    thetas,
+    rng=None,
+    pure_diffraction=False,
+    pure_fringes=False,
+    max_iter=5000,
+    on_unplaceable="drop",
+    return_slat=False,
+):
     """Accept-reject sample detector y-positions [m] for photons in one baseline.
 
     Parameters
@@ -105,8 +113,9 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
     ``slat_pitch > W`` opens dark gaps between patches.
     """
     if getattr(baseline, "combiner", "slatted") == "arbitrary":
-        return sample_arbitrary_positions(baseline, energies_j, thetas, rng=rng,
-                                          return_slat=return_slat)
+        return sample_arbitrary_positions(
+            baseline, energies_j, thetas, rng=rng, return_slat=return_slat
+        )
     rng = np.random.default_rng() if rng is None else rng
     thetas = np.asarray(thetas, dtype=float)
     energies_j = np.ravel(np.asarray(energies_j, dtype=float))
@@ -117,7 +126,7 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
     wavelengths = H * C / energies_j
     N = baseline.num_pairs
     W = baseline.W
-    p_det = baseline.slat_pitch                     # detector comb pitch (mag 1)
+    p_det = baseline.slat_pitch  # detector comb pitch (mag 1)
 
     # accept-reject until every photon has a position. Photons whose fringe
     # packet falls outside the detector (source beyond the field of view) can
@@ -125,7 +134,7 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
     # ``max_iter`` and leftovers are dropped (NaN) or raised — see the guard
     # after the loop. In-FoV photons place in far fewer than ``max_iter`` rounds.
     it = 0
-    warned_off_fov = False          # the off-FoV notice is raised once per call
+    warned_off_fov = False  # the off-FoV notice is raised once per call
     while len(indices) > 0 and it < max_iter:
         it += 1
         m = len(indices)
@@ -133,37 +142,52 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
         # illuminated strip = the full comb span (num_pairs * slat_pitch),
         # shifted by the geometric beam displacement with off-axis angle.
         half_span = N * p_det / 2.0
-        width_box = np.array([(-half_span) - baseline.L * thetas,
-                              (half_span) - baseline.L * thetas])
+        width_box = np.array(
+            [(-half_span) - baseline.L * thetas, (half_span) - baseline.L * thetas]
+        )
 
         # box height: just above the Fresnel maximum (empirical 2.7x factor)
-        height_top = 2.7 * fresnel_diffraction(wavelengths[0], baseline,
-                                               y_pos=np.array([0.0]))[0][0]
+        height_top = (
+            2.7
+            * fresnel_diffraction(wavelengths[0], baseline, y_pos=np.array([0.0]))[0][0]
+        )
 
         fringe_spacing = wavelengths / baseline.beam_angle
         num_fringes = np.ceil(
-            (width_box[1] - width_box[0]) * baseline.num_pairs / fringe_spacing)
+            (width_box[1] - width_box[0]) * baseline.num_pairs / fringe_spacing
+        )
 
         off_set_fringes = -(baseline.D * np.sin(thetas)) / (
-            2 * np.sin(baseline.beam_angle / 2))
+            2 * np.sin(baseline.beam_angle / 2)
+        )
 
         left_fringe = off_set_fringes - (
-            np.ceil((off_set_fringes - baseline.L * thetas + half_span)
-                    / fringe_spacing) * fringe_spacing)
+            np.ceil(
+                (off_set_fringes - baseline.L * thetas + half_span) / fringe_spacing
+            )
+            * fringe_spacing
+        )
 
-        rand_cos = (0.5 * fringe_spacing
-                    * sampler.cosine.rvs(loc=2 * np.pi * left_fringe / fringe_spacing,
-                                         size=m, random_state=rng) / np.pi)
+        rand_cos = (
+            0.5
+            * fringe_spacing
+            * sampler.cosine.rvs(
+                loc=2 * np.pi * left_fringe / fringe_spacing, size=m, random_state=rng
+            )
+            / np.pi
+        )
 
         if pure_diffraction:
             rand_pos = rng.uniform(width_box[0], width_box[1], size=m)
         else:
-            rand_pos = rand_cos + (rng.integers(low=0, high=num_fringes + 1, size=m)
-                                   * fringe_spacing)
+            rand_pos = rand_cos + (
+                rng.integers(low=0, high=num_fringes + 1, size=m) * fringe_spacing
+            )
 
         if not warned_off_fov and np.logical_or(
-                (off_set_fringes < width_box[0]).any(),
-                (off_set_fringes > width_box[1]).any()):
+            (off_set_fringes < width_box[0]).any(),
+            (off_set_fringes > width_box[1]).any(),
+        ):
             # Once per call: this is an accept-reject loop, so an unconditional
             # warning here fires on every iteration and buries the output of a
             # long run (thousands of identical lines) instead of informing it.
@@ -197,13 +221,14 @@ def sample_detector_positions(baseline, energies_j, thetas, rng=None,
         wavelengths = wavelengths[~keep]
         indices = indices[~keep]
 
-    if len(indices) > 0:                    # unplaceable: beyond the field of view
+    if len(indices) > 0:  # unplaceable: beyond the field of view
         if on_unplaceable == "raise":
             raise RuntimeError(
                 f"sample_detector_positions: {len(indices)} photon(s) could not "
                 f"be placed after {max_iter} iterations — fringe packet outside "
-                f"the field of view (|theta| too large for this baseline).")
-        y_pos[indices] = np.nan            # caller vignettes NaNs
+                f"the field of view (|theta| too large for this baseline)."
+            )
+        y_pos[indices] = np.nan  # caller vignettes NaNs
         slat_ids[indices] = -1
 
     return (y_pos, slat_ids) if return_slat else y_pos
@@ -230,8 +255,9 @@ def arbitrary_fringe_intensity(y, baseline, wavelength, theta):
     return np.where(inside, val, 0.0)
 
 
-def sample_arbitrary_positions(baseline, energies_j, thetas, rng=None,
-                               max_iter=10000, return_slat=False):
+def sample_arbitrary_positions(
+    baseline, energies_j, thetas, rng=None, max_iter=10000, return_slat=False
+):
     """Detector DETY positions [m] for an ``'arbitrary'`` beam combiner.
 
     Idealized two-beam combiner: fringes of period ``lambda/beam_angle`` and
@@ -272,7 +298,8 @@ def sample_arbitrary_positions(baseline, energies_j, thetas, rng=None,
         raise RuntimeError(
             f"sample_arbitrary_positions: {todo.size} photon(s) not placed after "
             f"{max_iter} rounds -- overlap window ({baseline.overlap_span:g} m) "
-            f"is much narrower than a fringe and sits on a dark fringe.")
+            f"is much narrower than a fringe and sits on a dark fringe."
+        )
     slat_ids = np.zeros(n, dtype=np.int32)
     return (y_pos, slat_ids) if return_slat else y_pos
 
@@ -321,7 +348,10 @@ def _fresnel_slit_sample(aperture, wavelengths, dist, rng):
     n = wavelengths.size
     span = aperture * 1.6
     ygrid = np.linspace(-span / 2, span / 2, 512)[:, None]
-    hmax = _fresnel_slit_intensity(ygrid, aperture, wavelengths[None, :], dist).max() * 1.05
+    hmax = (
+        _fresnel_slit_intensity(ygrid, aperture, wavelengths[None, :], dist).max()
+        * 1.05
+    )
     out = np.zeros(n)
     todo = np.arange(n)
     while todo.size:
@@ -334,8 +364,9 @@ def _fresnel_slit_sample(aperture, wavelengths, dist, rng):
     return out
 
 
-def sample_detz_positions(baseline, energies_j, theta_perp, rng=None,
-                          distance=None, geometric_nf=10.0):
+def sample_detz_positions(
+    baseline, energies_j, theta_perp, rng=None, distance=None, geometric_nf=10.0
+):
     """Detector cross-axis positions ``DETZ`` [m] for one baseline.
 
     The z axis carries NO interference (the two beams are separated along the
@@ -357,13 +388,13 @@ def sample_detz_positions(baseline, energies_j, theta_perp, rng=None,
     Wz = baseline.Wz
     lam = H * C / e
     NF = (Wz / 2.0) ** 2 / (lam * Z)
-    center = -tperp * Z                       # geometric lateral beam shift [m]
+    center = -tperp * Z  # geometric lateral beam shift [m]
     detz = np.empty(e.size)
     geo = NF >= geometric_nf
-    if geo.any():                              # geometric shadow: uniform top-hat
+    if geo.any():  # geometric shadow: uniform top-hat
         ng = int(geo.sum())
         detz[geo] = center[geo] + rng.uniform(-Wz / 2.0, Wz / 2.0, ng)
-    if (~geo).any():                           # Fresnel regime (unusual here)
+    if (~geo).any():  # Fresnel regime (unusual here)
         idx = np.where(~geo)[0]
         detz[idx] = center[idx] + _fresnel_slit_sample(Wz, lam[idx], Z, rng)
     return detz
@@ -376,12 +407,15 @@ def simulate_detz(baseline_id, energy_j, theta_perp, baselines, rng=None):
     for k in np.unique(baseline_id):
         sel = baseline_id == k
         detz[sel] = sample_detz_positions(
-            baselines[int(k)], energy_j[sel], theta_perp[sel], rng=rng)
+            baselines[int(k)], energy_j[sel], theta_perp[sel], rng=rng
+        )
     return detz
+
 
 # ==========================================================================
 # from generate.py
 # ==========================================================================
+
 
 def _draw_arrival_times(n, exposure, rng, lightcurve=None):
     """Arrival times for a homogeneous (or lightcurve-modulated) Poisson process.
@@ -403,8 +437,16 @@ def _draw_arrival_times(n, exposure, rng, lightcurve=None):
     return np.interp(rng.uniform(0, 1, n), cdf, t)
 
 
-def sample_photons(energ_lo, energ_hi, per_baseline_resp, spectra, coords,
-                   exposure, rng=None, lightcurve=None):
+def sample_photons(
+    energ_lo,
+    energ_hi,
+    per_baseline_resp,
+    spectra,
+    coords,
+    exposure,
+    rng=None,
+    lightcurve=None,
+):
     """Pure-NumPy photon sampler.
 
     Parameters
@@ -456,9 +498,14 @@ def sample_photons(energ_lo, energ_hi, per_baseline_resp, spectra, coords,
 
     if not energies:
         empty = np.array([])
-        return {"time": empty, "energy_kev": empty, "ra_deg": empty,
-                "dec_deg": empty, "src_id": empty.astype(np.int32),
-                "baseline_id": empty.astype(np.int16)}
+        return {
+            "time": empty,
+            "energy_kev": empty,
+            "ra_deg": empty,
+            "dec_deg": empty,
+            "src_id": empty.astype(np.int32),
+            "baseline_id": empty.astype(np.int16),
+        }
 
     return {
         "time": np.concatenate(times),
@@ -503,17 +550,27 @@ def sample_photons_components(arf, components, exposure, rng=None):
             bids.append(np.full(n, i, dtype=np.int16))
     if not energies:
         z = np.array([])
-        return {"time": z, "energy_kev": z, "ra_deg": z, "dec_deg": z,
-                "src_id": z.astype(np.int32), "baseline_id": z.astype(np.int16)}
-    return {"time": np.concatenate(times),
-            "energy_kev": np.concatenate(energies),
-            "ra_deg": np.concatenate(ras), "dec_deg": np.concatenate(decs),
-            "src_id": np.concatenate(sids),
-            "baseline_id": np.concatenate(bids)}
+        return {
+            "time": z,
+            "energy_kev": z,
+            "ra_deg": z,
+            "dec_deg": z,
+            "src_id": z.astype(np.int32),
+            "baseline_id": z.astype(np.int16),
+        }
+    return {
+        "time": np.concatenate(times),
+        "energy_kev": np.concatenate(energies),
+        "ra_deg": np.concatenate(ras),
+        "dec_deg": np.concatenate(decs),
+        "src_id": np.concatenate(sids),
+        "baseline_id": np.concatenate(bids),
+    }
 
 
-def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
-                     pointing=(0.0, 0.0), seed=None):
+def generate_photons(
+    source, arf, exposure, rng=None, lightcurve=None, pointing=(0.0, 0.0), seed=None
+):
     """High-level generate stage: -> :class:`~xrisalis.io.PhotonList`.
 
     ``source`` may be any :class:`xrisalis.sources.SourceModel` (point, image,
@@ -528,30 +585,44 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
     automatic re-pointing: a source far from it falls outside the field of
     view and is vignetted.
     """
-    exposure = to_seconds(exposure)                  # accept a time Quantity
+    exposure = to_seconds(exposure)  # accept a time Quantity
     if rng is None:
         rng = np.random.default_rng(seed)
-    if hasattr(source, "components"):                 # a SourceModel
+    if hasattr(source, "components"):  # a SourceModel
         d = sample_photons_components(arf, source.components(), exposure, rng=rng)
-    else:                                             # SimputSource / points
-        d = sample_photons(arf.energ_lo, arf.energ_hi, arf.per_baseline,
-                           source.spectra, (source.ra_deg, source.dec_deg),
-                           exposure, rng=rng, lightcurve=lightcurve)
+    else:  # SimputSource / points
+        d = sample_photons(
+            arf.energ_lo,
+            arf.energ_hi,
+            arf.per_baseline,
+            source.spectra,
+            (source.ra_deg, source.dec_deg),
+            exposure,
+            rng=rng,
+            lightcurve=lightcurve,
+        )
     if is_skycoord(pointing):
         ra_pnt, dec_pnt = to_radec_deg(pointing)
     else:
         ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     return PhotonList(
-        time=d["time"], energy_kev=d["energy_kev"],
-        ra_deg=d["ra_deg"], dec_deg=d["dec_deg"],
-        src_id=d["src_id"], baseline_id=d["baseline_id"],
-        exposure=exposure, ra_pnt=float(ra_pnt), dec_pnt=float(dec_pnt),
+        time=d["time"],
+        energy_kev=d["energy_kev"],
+        ra_deg=d["ra_deg"],
+        dec_deg=d["dec_deg"],
+        src_id=d["src_id"],
+        baseline_id=d["baseline_id"],
+        exposure=exposure,
+        ra_pnt=float(ra_pnt),
+        dec_pnt=float(dec_pnt),
         meta={"seed": seed},
     )
+
 
 # ==========================================================================
 # from redistribute.py
 # ==========================================================================
+
 
 def redistribute_rmf(true_energy_kev, rmf, rng=None, chunk=50_000):
     """Vectorized RMF redistribution.
@@ -581,14 +652,14 @@ def redistribute_rmf(true_energy_kev, rmf, rng=None, chunk=50_000):
     # per-energy-row channel CDF (full-width rows: channel index == column index)
     row_sums = rmf.matrix.sum(axis=1, keepdims=True)
     safe = np.where(row_sums > 0, row_sums, 1.0)
-    cdf = np.cumsum(np.clip(rmf.matrix, 0, None), axis=1) / safe   # (nE, nChan)
+    cdf = np.cumsum(np.clip(rmf.matrix, 0, None), axis=1) / safe  # (nE, nChan)
 
     pi = np.empty(bin_idx.size, dtype=np.int32)
     for s in range(0, bin_idx.size, chunk):
-        b = bin_idx[s:s + chunk]
+        b = bin_idx[s : s + chunk]
         u = rng.uniform(0, 1, b.size)[:, None]
         # inverse-CDF: channel = number of cdf entries below u
-        pi[s:s + chunk] = (u > cdf[b]).sum(axis=1)
+        pi[s : s + chunk] = (u > cdf[b]).sum(axis=1)
 
     pi = np.clip(pi, 0, rmf.channel.size - 1)
     detected_kev = rmf.channel_energy[pi]
@@ -607,15 +678,16 @@ def simulate_positions(baseline_id, energy_j, theta, baselines, rng=None):
     for k in np.unique(baseline_id):
         sel = baseline_id == k
         y, s = sample_detector_positions(
-            baselines[int(k)], energy_j[sel], theta[sel], rng=rng,
-            return_slat=True)
+            baselines[int(k)], energy_j[sel], theta[sel], rng=rng, return_slat=True
+        )
         dety[sel] = y
         slat_id[sel] = s
     return dety, slat_id
 
 
-def redistribute(photons, instrument, rmf, rng=None, seed=None,
-                 readout=None, pointing=None):
+def redistribute(
+    photons, instrument, rmf, rng=None, seed=None, readout=None, pointing=None
+):
     """High-level redistribute stage: -> :class:`~xrisalis.io.EventList`.
 
     ``photons`` is a PhotonList; ``instrument`` an Interferometer (baselines +
@@ -634,9 +706,10 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
         rng = np.random.default_rng(seed)
 
     # attitude stream + per-photon off-axis angle (fringe axis + cross axis)
-    t_s = np.asarray(photons.time, dtype=float)          # arrival times [s]
-    attitude = instrument.gen_pointing(float(t_s.max()) if t_s.size else 1.0,
-                                       pointing=pointing)
+    t_s = np.asarray(photons.time, dtype=float)  # arrival times [s]
+    attitude = instrument.gen_pointing(
+        float(t_s.max()) if t_s.size else 1.0, pointing=pointing
+    )
     # attitude rows are spaced by instrument.time_step SECONDS, so the row for a
     # photon is int(t / time_step) -- int(t) is only right at time_step = 1.
     toa = attitude_index(t_s, instrument.time_step, attitude.shape[0])
@@ -669,15 +742,26 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
     # combiner receives every photon along the fringe axis by design. Across
     # it (DETZ) the field is set by the beam angle, |theta_perp| <= beta/2.
     # Placements the sampler cannot make come back as NaN too; all are dropped.
-    fov = np.array([(np.inf if b.combiner == "arbitrary"
-                     else b.field_of_view(which="detection"),
-                     b.field_of_view(which="cross")) for b in instrument.baselines])
-    inside = ((np.abs(theta_v) <= fov[bidx, 0])
-              & (np.abs(theta_perp_v) <= fov[bidx, 1]))
+    fov = np.array(
+        [
+            (
+                np.inf
+                if b.combiner == "arbitrary"
+                else b.field_of_view(which="detection"),
+                b.field_of_view(which="cross"),
+            )
+            for b in instrument.baselines
+        ]
+    )
+    inside = (np.abs(theta_v) <= fov[bidx, 0]) & (np.abs(theta_perp_v) <= fov[bidx, 1])
     dety, slat_id = np.full(bidx.size, np.nan), np.full(bidx.size, -1, np.int32)
     dety[inside], slat_id[inside] = simulate_positions(
-        bidx[inside], true_kev[inside] * KEV, theta_v[inside],
-        instrument.baselines, rng=rng)
+        bidx[inside],
+        true_kev[inside] * KEV,
+        theta_v[inside],
+        instrument.baselines,
+        rng=rng,
+    )
     on = np.isfinite(dety)
     n_out = int((~on).sum())
     if n_out:
@@ -686,11 +770,13 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
             f"{n_out} of {on.size} photons ({frac:.1f}%) fall outside the field "
             f"of view and were vignetted. Check the source position and "
             f"pointing/boresight relative to the instrument FoV "
-            f"(Interferometer.field_of_view).")
+            f"(Interferometer.field_of_view)."
+        )
     if not on.any():
         raise ValueError(
             "all photons fall outside the field of view — the source (with the "
-            "current pointing/boresight) is not within the instrument's FoV.")
+            "current pointing/boresight) is not within the instrument's FoV."
+        )
     dety = dety[on]
     slat_id = slat_id[on]
     bidx, true_kev = bidx[on], true_kev[on]
@@ -704,8 +790,9 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
     # mirror z-extent (geometric shadow for cm mirrors at the detector plane;
     # Fresnel only over ~km propagation). Sampled with the TRUE wavelength, as
     # for DETY.
-    detz = simulate_detz(bidx, true_kev * KEV, theta_perp_v,
-                         instrument.baselines, rng=rng)
+    detz = simulate_detz(
+        bidx, true_kev * KEV, theta_perp_v, instrument.baselines, rng=rng
+    )
 
     t_d = time_v if readout is None else readout(time_v)
 
@@ -715,6 +802,7 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
     # instrument's detector layout if it defines chips, else a default tiled
     # layout (one chip per baseline).
     from .detector import Detector
+
     det = instrument.detector
     if det is None or not getattr(det, "chips", None):
         px = det.pixel_m if det is not None else 1e-5
@@ -729,21 +817,39 @@ def redistribute(photons, instrument, rmf, rng=None, seed=None,
             e_lo = float(np.percentile(detected_kev, 1))
             e_hi = float(np.percentile(detected_kev, 99))
             fov_img = instrument.field_of_view(
-                energy_kev=(e_lo, e_hi), rmf=rmf, which="imaging",
-                reduce="low_edge", combine="min")
-    except Exception:                                    # never block redistribute
+                energy_kev=(e_lo, e_hi),
+                rmf=rmf,
+                which="imaging",
+                reduce="low_edge",
+                combine="min",
+            )
+    except Exception:  # never block redistribute
         fov_img = None
 
     return EventList(
-        time=t_d, energy_kev=detected_kev, true_energy_kev=true_kev,
-        dety=dety, detz=detz,
-        baseline_id=bidx, pi=pi, ra_deg=ra_v, dec_deg=dec_v,
-        pointing=attitude, time_step=float(instrument.time_step),
-        ra_pnt=photons.ra_pnt, dec_pnt=photons.dec_pnt,
+        time=t_d,
+        energy_kev=detected_kev,
+        true_energy_kev=true_kev,
+        dety=dety,
+        detz=detz,
+        baseline_id=bidx,
+        pi=pi,
+        ra_deg=ra_v,
+        dec_deg=dec_v,
+        pointing=attitude,
+        time_step=float(instrument.time_step),
+        ra_pnt=photons.ra_pnt,
+        dec_pnt=photons.dec_pnt,
         ebounds=rmf.ebounds_dict,
-        exposure=photons.exposure, fov=fov_img, slat_id=slat_id,
-        chip_id=place["chip_id"], chipx=place["chipx"], chipy=place["chipy"],
-        chipx_m=place["chipx_m"], chipy_m=place["chipy_m"],
-        focx=place["focx"], focy=place["focy"],
+        exposure=photons.exposure,
+        fov=fov_img,
+        slat_id=slat_id,
+        chip_id=place["chip_id"],
+        chipx=place["chipx"],
+        chipy=place["chipy"],
+        chipx_m=place["chipx_m"],
+        chipy_m=place["chipy_m"],
+        focx=place["focx"],
+        focy=place["focy"],
         meta={"seed": seed},
     )
