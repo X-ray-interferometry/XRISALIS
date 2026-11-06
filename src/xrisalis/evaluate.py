@@ -25,9 +25,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .units import to_uas
 from .config import RAD2UAS
-from .coords import sky_to_tangent
+from .coords import nominal_pointing, tangent_offsets
+from .units import to_uas
 
 
 # --------------------------------------------------------------------- coords
@@ -48,32 +48,33 @@ def _uas_to_rc(alpha, delta, span_uas, npix):
 
 
 # ------------------------------------------------------------- true sources
-def true_sources(source, center_deg=(0.0, 0.0)):
+def _offsets_uas(ra_deg, dec_deg, center_deg):
+    east, north = tangent_offsets(ra_deg, dec_deg, *center_deg)
+    return np.column_stack((east * RAD2UAS, north * RAD2UAS))
+
+
+def true_sources(source, center_deg=None):
     """Extract (positions_uas (m,2)=[alpha,delta], fluxes (m,)) from a source.
 
     ``source`` may be a :class:`xrisalis.sources.SourceModel` (uses component
     centroids + integrated fluxes), a SimputSource (ra_deg/dec_deg + spectra), or
-    a plain ``(positions_uas, fluxes)`` tuple (returned unchanged).
-
-    Positions are tangent-plane offsets ``alpha`` (East) / ``delta`` (North)
-    from ``center_deg`` = ``(ra, dec)`` -- the image's phase center, e.g.
-    ``meta['phase_center_deg']`` from :func:`xrisalis.reconstruct.reconstruct`.
+    a plain ``(positions_uas, fluxes)`` tuple. Positions are tangent-plane
+    offsets (East, North) from ``center_deg`` = ``(ra, dec)`` [deg], the image's
+    phase centre (``meta['phase_center_deg']`` from
+    :func:`xrisalis.reconstruct.reconstruct`); default: the source's nominal
+    pointing (:func:`xrisalis.coords.nominal_pointing`), which is also the
+    default image centre.
     """
     if isinstance(source, tuple):
         pos, flux = source
         return np.asarray(pos, float), np.asarray(flux, float)
-    ra0, dec0 = center_deg
+    if center_deg is None:
+        center_deg = nominal_pointing(source)
     if hasattr(source, "positions_deg") and hasattr(source, "fluxes"):
-        pos_deg = np.atleast_2d(source.positions_deg())  # (m,2) [ra,dec] deg
-        xi, eta = sky_to_tangent(pos_deg[:, 0], pos_deg[:, 1], ra0, dec0)
-        return (
-            np.column_stack((xi, eta)) * RAD2UAS,
-            np.asarray(source.fluxes(), float),
-        )
-    xi, eta = sky_to_tangent(
-        np.asarray(source.ra_deg, float), np.asarray(source.dec_deg, float), ra0, dec0
-    )
-    pos = np.column_stack((xi, eta)) * RAD2UAS
+        pos_deg = np.atleast_2d(source.positions_deg())    # (m,2) [ra,dec] deg
+        return (_offsets_uas(pos_deg[:, 0], pos_deg[:, 1], center_deg),
+                np.asarray(source.fluxes(), float))
+    pos = _offsets_uas(source.ra_deg, source.dec_deg, center_deg)
     spectra = getattr(source, "spectra", None)
     if spectra:
         # trapezoidal integral of each spectrum (np.trapz renamed in numpy 2.x)
@@ -213,9 +214,8 @@ class EvaluationResult:
 
 
 # ------------------------------------------------------------- main entry
-def evaluate(
-    image, span_uas, source=None, n_sources=2, min_sep_uas=None, center_deg=(0.0, 0.0)
-):
+def evaluate(image, span_uas, source=None, n_sources=2, min_sep_uas=None,
+             center_deg=None):
     """Evaluate a reconstructed image against the true source model.
 
     Parameters
@@ -226,9 +226,7 @@ def evaluate(
         The truth. If None, only source-agnostic metrics (peaks, separation,
         dynamic range) are returned; truth-relative fields are NaN.
     n_sources : int                number of peaks to recover.
-    center_deg : (ra, dec), optional
-        Phase center of ``image`` (``meta['phase_center_deg']``); truth
-        positions are projected about it (see :func:`true_sources`).
+    center_deg : (ra, dec) or None  image phase centre [deg] (see true_sources).
 
     Returns
     -------

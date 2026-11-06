@@ -23,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
-__all__ = ["xri_cmap", "xri_cmap_r", "xri_legacy", "XRI_RGB", "XRI_HEX", "LEGACY_HEX"]
+__all__ = ["LEGACY_HEX", "XRI_RGB", "xri_cmap", "xri_cmap_r", "xri_legacy"]
 
 # 256-entry lookup table, CAM02-UCS uniform (J' linear 0.0->96.1) and chroma-symmetric, chroma x1.4
 #
@@ -292,8 +292,6 @@ XRI_RGB = np.array(
 )
 
 LEGACY_HEX = ["#000000", "#242037", "#344871", "#89A4E3", "#E2F6FE"]
-
-XRI_HEX = tuple("#%02x%02x%02x" % tuple(np.round(c * 255).astype(int)) for c in XRI_RGB)
 
 xri_cmap = LinearSegmentedColormap.from_list("xri", list(map(tuple, XRI_RGB)), N=1024)
 xri_cmap_r = xri_cmap.reversed(name="xri_r")

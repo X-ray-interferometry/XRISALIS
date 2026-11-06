@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import os
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-from .colormaps import xri_cmap, xri_cmap_r, xri_legacy  # noqa: F401
+from .colormaps import xri_cmap, xri_cmap_r, xri_legacy
 
 # ---------------------------------------------------------------- style ------
 _STYLE_DIR = os.path.join(os.path.dirname(__file__), "styles")

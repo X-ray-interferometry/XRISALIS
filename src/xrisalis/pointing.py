@@ -1,11 +1,14 @@
 """Observation pointing / attitude models.
 
 The simulator consumes an attitude stream: a ``(T, 3)`` array of
-``(pitch, yaw, roll)`` in **radians**, indexed by integer time-step (built by
-:meth:`xrisalis.instrument.Interferometer.gen_pointing`). ``pitch`` and ``yaw``
-are the boresight offsets along the two tangent-plane axes (the same axes as a
-source's sky offset, i.e. ``pitch`` runs with declination and ``yaw`` with right
-ascension); ``roll`` is the rotation about the boresight that the aperture
+``(pitch, yaw, roll)`` in **radians**, sampled every ``time_step`` seconds (built
+by :meth:`xrisalis.instrument.Interferometer.gen_pointing`). Each photon sees the
+attitude interpolated at its own arrival time (:func:`attitude_at`). ``pitch`` and ``yaw``
+are the boresight offsets North and East on the tangent plane at the
+observation's nominal pointing (``PhotonList.ra_pnt``, ``dec_pnt``; see
+:mod:`xrisalis.coords`), the same axes as the sources' offsets, so ``(0, 0)``
+stares at the nominal pointing. To point at a given sky position use
+:func:`xrisalis.coords.sky_offset_deg`. ``roll`` is the rotation about the boresight that the aperture
 sweeps to build uv coverage.
 
 Both are **tangent-plane offsets** [rad] from the observation's nominal
@@ -23,7 +26,8 @@ roll and the roller is skipped.
 
 Three ways to specify a pointing:
 
-* :func:`constant_pointing` — a fixed stare (the default is on-axis, ``0, 0``).
+* :func:`constant_pointing` — a fixed stare (the default is ``0, 0``: the
+  nominal pointing).
 * :func:`pointing_from_function` — ``f(t_seconds)`` returning the boresight
   (and optionally roll) over time; use for a smooth analytic drift/dither.
 * :func:`pointing_from_file` — a tabulated timeline (FITS table or text),
@@ -37,6 +41,7 @@ converted to radians internally.
 from __future__ import annotations
 
 import os
+
 import numpy as np
 
 from .units import to_rad
@@ -210,7 +215,8 @@ def pointing_from_file(path, degrees=True):
     columns (and an optional roll column):
 
     * time  : ``TIME`` (or ``T``), in seconds;
-    * pitch : ``PITCH`` (or ``DEC``);  yaw : ``YAW`` (or ``RA``);
+    * pitch : ``PITCH`` (or ``DEC``);  yaw : ``YAW`` (or ``RA``): North and East
+      offsets from the nominal pointing (not absolute coordinates);
     * roll  : ``ROLL`` (optional; if present it supplies roll and bypasses the
       roller).
 
@@ -303,3 +309,28 @@ def attitude_index(times, time_step=1.0, n_rows=None):
     else:
         idx = np.maximum(idx, 0)
     return idx
+
+
+def attitude_at(stream, time_step, times):
+    """Attitude ``(N, 3)`` [rad] at each photon time, interpolated in the stream.
+
+    The stream has one row every ``time_step`` seconds (row ``k`` at
+    ``t = k * time_step``). Each column is linearly interpolated at the photon
+    times and held at the end values outside the stream, so the attitude a
+    photon sees is that of its own arrival time rather than of the row it falls
+    in. Roll is unwrapped before interpolating, so a stream that wraps at 2 pi
+    interpolates correctly. A constant column is returned exactly.
+    """
+    stream = np.atleast_2d(np.asarray(stream, dtype=float))
+    ts = float(time_step)
+    if not ts > 0:
+        raise ValueError(f"time_step must be positive; got {time_step}")
+    t = np.asarray(times, dtype=float)
+    grid = np.arange(stream.shape[0], dtype=float) * ts
+    cols = []
+    for k in range(stream.shape[1]):
+        c = stream[:, k]
+        if k == 2:
+            c = np.unwrap(c)
+        cols.append(np.interp(t, grid, c))
+    return np.column_stack(cols) if cols else np.zeros((t.size, 0))

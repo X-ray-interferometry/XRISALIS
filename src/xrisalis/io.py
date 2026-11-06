@@ -5,17 +5,20 @@ shared FITS helpers. astropy is the only FITS backend. Sky coords are degrees,
 energies keV, detector positions meters, times seconds on the FITS boundary."""
 
 from __future__ import annotations
+
 import datetime as _dt
 import os
 import re
 import warnings
+from dataclasses import dataclass, field
+
+import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
-from dataclasses import dataclass, field
-import numpy as np
-from .config import KEV, H, C
 
+from .config import KEV, C, H
+from .coords import tangent_offsets
 
 # ==========================================================================
 # from fits_base.py
@@ -46,7 +49,7 @@ def provenance_header(history=None, extra=None, seed=None):
     h["ORIGIN"] = ("XRISALIS", "X-ray interferometry sim & analysis")
     h["XRIVERS"] = (str(XRI_VERSION), "XRISALIS version")
     h["DATE"] = (
-        _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
         "File creation UTC",
     )
     h["TELESCOP"] = TELESCOP
@@ -113,18 +116,12 @@ class PhotonList:
 
     @property
     def loc_rad(self):
-        """(N,2) tangent-plane offset [rad] as ``[eta, xi]`` (North, East).
-
-        Each photon's true sky position is projected (gnomonic) about the
-        nominal pointing ``(ra_pnt, dec_pnt)``, so RA differences carry their
-        ``cos(dec)`` and wrap at 0/360 deg. The column order matches the
-        attitude stream's ``(pitch, yaw)`` offsets and the fringe/off-axis maths
-        (:func:`xrisalis.simulate.off_axis_angles_2d`).
-        """
-        from .coords import sky_to_tangent
-
-        xi, eta = sky_to_tangent(self.ra_deg, self.dec_deg, self.ra_pnt, self.dec_pnt)
-        return np.column_stack((eta, xi))
+        """(N,2) tangent-plane offset [rad] as [north, east] from the nominal
+        pointing ``(ra_pnt, dec_pnt)`` (gnomonic, see :mod:`xrisalis.coords`), on
+        the same axes as the boresight ``(pitch, yaw)``."""
+        east, north = tangent_offsets(self.ra_deg, self.dec_deg,
+                                      self.ra_pnt, self.dec_pnt)
+        return np.column_stack((north, east))
 
     # --- io ------------------------------------------------------------------
     def to_hdu(self):
@@ -142,8 +139,8 @@ class PhotonList:
         hdr["EXTNAME"] = "PHOTONS"
         if self.exposure is not None:
             hdr["EXPOSURE"] = (float(self.exposure), "Exposure time [s]")
-        hdr["RA_PNT"] = (float(self.ra_pnt), "Pointing RA [deg]")
-        hdr["DEC_PNT"] = (float(self.dec_pnt), "Pointing DEC [deg]")
+        hdr["RA_PNT"] = (float(self.ra_pnt), "Nominal pointing RA [deg]")
+        hdr["DEC_PNT"] = (float(self.dec_pnt), "Nominal pointing DEC [deg]")
         return fits.BinTableHDU.from_columns(cols, header=hdr)
 
     def write(self, path, overwrite=True):
@@ -300,23 +297,18 @@ class EventList:
             )
         return arr
 
-    def _attitude_index(self, stream):
-        """Row of an attitude stream belonging to every event.
-
-        Rows are spaced by :attr:`time_step` SECONDS, so the row is
-        ``int(t / time_step)`` — plain ``int(t)`` silently compresses the whole
-        attitude timeline whenever ``time_step != 1``.
-        """
-        from .pointing import attitude_index
-
-        return attitude_index(self.time, self.time_step, stream.shape[0])
+    def _attitude_per_event(self, stream):
+        """Attitude ``(N, 3)`` per event, interpolated at the event times."""
+        from .pointing import attitude_at
+        return attitude_at(stream, self.time_step, self.time)
 
     def roll_per_event_from(self, attitude=None):
-        """Roll [rad] per event from ``attitude`` (see :meth:`attitude_stream`)."""
+        """Roll [rad] per event from ``attitude`` (see :meth:`attitude_stream`),
+        interpolated at each event's time."""
         stream = self.attitude_stream(attitude)
         if stream is None:
             return np.zeros(len(self))
-        return stream[self._attitude_index(stream), 2]
+        return self._attitude_per_event(stream)[:, 2]
 
     def boresight_per_event(self, attitude=None):
         """``(N, 2)`` boresight ``(pitch, yaw)`` [rad] per event.
@@ -329,7 +321,7 @@ class EventList:
         stream = self.attitude_stream(attitude)
         if stream is None:
             return np.zeros((len(self), 2))
-        return stream[self._attitude_index(stream), :2]
+        return self._attitude_per_event(stream)[:, :2]
 
     def mean_boresight(self):
         """Mean recorded boresight ``(pitch, yaw)`` [rad] over the events.
@@ -540,13 +532,13 @@ class EventList:
                 true_energy_kev=d["TRUE_ENERGY"] if "TRUE_ENERGY" in names else None,
                 ra_deg=d["RA"] if "RA" in names else None,
                 dec_deg=d["DEC"] if "DEC" in names else None,
-                pointing=pointing,
-                time_step=time_step,
+                pointing=pointing, 
+                time_step=time_step, 
                 ebounds=ebounds,
-                ra_pnt=float(hdr.get("RA_PNT", 0.0)),
-                dec_pnt=float(hdr.get("DEC_PNT", 0.0)),
-                exposure=hdr.get("EXPOSURE"),
+                exposure=hdr.get("EXPOSURE"), 
                 fov=hdr.get("FOV"),
+                ra_pnt=hdr.get("RA_PNT", 0.0), 
+                dec_pnt=hdr.get("DEC_PNT", 0.0),
                 slat_id=d["SLAT_ID"] if "SLAT_ID" in names else None,
                 chip_id=d["CHIP_ID"] if "CHIP_ID" in names else None,
                 chipx=d["CHIPX"] if "CHIPX" in names else None,

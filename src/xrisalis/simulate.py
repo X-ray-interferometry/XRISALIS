@@ -5,15 +5,18 @@ Section 2 (generate): source + ARF + exposure -> Photon List (Poisson photons).
 Section 3 (redistribute): Photon List + RMF + optics -> Event List."""
 
 from __future__ import annotations
+
 import warnings
+
 import numpy as np
 import scipy.special as sps
 import scipy.stats as sampler
-from .config import KEV, H, C
-from .io import PhotonList, EventList
-from .units import to_seconds, to_radec_deg, is_skycoord
-from .pointing import attitude_index
 
+from .config import KEV, C, H
+from .coords import nominal_pointing
+from .io import EventList, PhotonList
+from .pointing import attitude_at
+from .units import is_skycoord, to_radec_deg, to_seconds
 
 # ==========================================================================
 # from fringes.py
@@ -310,15 +313,14 @@ def off_axis_angles_2d(pointing, toa, loc):
     Decomposes the sky offset (source relative to the boresight) into the
     baseline/roll frame: ``theta_par`` along the fringe (DETY, interferometric)
     axis and ``theta_perp`` along the cross (DETZ) axis. ``loc`` is the (N,2)
-    tangent-plane offset ``[eta, xi]`` [rad] of each photon from the nominal
-    pointing (:attr:`~xrisalis.io.PhotonList.loc_rad`), and ``pointing`` the
-    attitude stream whose ``(pitch, yaw)`` are offsets on the same plane, so
-    the difference below is a true small angle (cos dec and the RA wrap are
-    handled by the projection); ``toa`` is the integer time-step index.
+    sky offset [rad]. ``pointing`` is either an attitude stream indexed by
+    ``toa`` (integer row per photon), or, with ``toa=None``, the per-photon
+    attitude ``(N, 3)`` itself (see :func:`xrisalis.pointing.attitude_at`).
     """
-    pos_rel = pointing[toa, :2] - loc
+    att = pointing if toa is None else pointing[toa]
+    pos_rel = att[:, :2] - loc
     r = np.sqrt(pos_rel[:, 0] ** 2 + pos_rel[:, 1] ** 2)
-    ang = pointing[toa, 2] - np.arctan2(pos_rel[:, 0], pos_rel[:, 1])
+    ang = att[:, 2] - np.arctan2(pos_rel[:, 0], pos_rel[:, 1])
     return np.cos(ang) * r, np.sin(ang) * r
 
 
@@ -568,27 +570,68 @@ def sample_photons_components(arf, components, exposure, rng=None):
     }
 
 
-def generate_photons(
-    source, arf, exposure, rng=None, lightcurve=None, pointing=(0.0, 0.0), seed=None
-):
+def _needs_own_sampler(source):
+    """True for sources (or combinations) that sample their own photons."""
+    if hasattr(source, "sample_arf"):
+        return True
+    return any(hasattr(s, "sample_arf") for s in getattr(source, "sources", []))
+
+
+def _concat_samples(parts):
+    keys = ("time", "energy_kev", "ra_deg", "dec_deg", "src_id", "baseline_id")
+    parts = [p for p in parts if p["time"].size]
+    if not parts:
+        z = np.array([])
+        return {"time": z, "energy_kev": z, "ra_deg": z, "dec_deg": z,
+                "src_id": z.astype(np.int32), "baseline_id": z.astype(np.int16)}
+    return {k: np.concatenate([p[k] for p in parts]) for k in keys}
+
+
+def _sample_mixed(source, arf, exposure, rng):
+    """Sample a self-sampling source, or a combination of those with ordinary
+    component sources (src_id = index of the sub-source, as in CompositeSource)."""
+    if hasattr(source, "sample_arf"):
+        return source.sample_arf(arf, exposure, rng=rng)
+    parts = []
+    for k, sub in enumerate(source.sources):
+        if hasattr(sub, "sample_arf"):
+            d = sub.sample_arf(arf, exposure, rng=rng)
+        else:
+            d = sample_photons_components(arf, sub.components(), exposure, rng=rng)
+        d["src_id"] = np.full(d["time"].size, k, dtype=np.int32)
+        parts.append(d)
+    return _concat_samples(parts)
+
+
+def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
+                     pointing=None, seed=None):
     """High-level generate stage: -> :class:`~xrisalis.io.PhotonList`.
 
     ``source`` may be any :class:`xrisalis.sources.SourceModel` (point, image,
     cube, or a combination via ``a + b``) — routed through
-    :func:`sample_photons_components` — or a SimputSource / object exposing
-    ``ra_deg``, ``dec_deg``, ``spectra`` (the point-catalog fast path).
+    :func:`sample_photons_components` — an :class:`~xrisalis.sources.XrimodelSource`
+    (or a combination containing one), which samples its own photons, or a
+    SimputSource / object exposing ``ra_deg``, ``dec_deg``, ``spectra`` (the
+    point-catalog fast path).
 
-    ``pointing`` is the **nominal pointing** ``(ra, dec)`` (bare degrees,
-    Quantities or a SkyCoord): the tangent point all off-axis/fringe maths is
-    projected about, stored as ``PhotonList.ra_pnt/dec_pnt``. The attitude
-    stream (:mod:`xrisalis.pointing`) gives small offsets from it. There is no
-    automatic re-pointing: a source far from it falls outside the field of
-    view and is vignetted.
+    ``pointing`` is the nominal pointing ``(ra, dec)`` (degrees, Quantities or a
+    SkyCoord): the tangent point of all off-axis maths, which the boresight
+    ``(pitch, yaw)`` of the attitude stream is measured from (see
+    :mod:`xrisalis.coords`). Default: the source's own position (an xrimodel
+    model's reference, else the centre of its positions).
     """
-    exposure = to_seconds(exposure)  # accept a time Quantity
+    exposure = to_seconds(exposure)                  # accept a time Quantity
+    if pointing is None:
+        ra_pnt, dec_pnt = nominal_pointing(source)
+    elif is_skycoord(pointing):
+        ra_pnt, dec_pnt = to_radec_deg(pointing)
+    else:
+        ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     if rng is None:
         rng = np.random.default_rng(seed)
-    if hasattr(source, "components"):  # a SourceModel
+    if _needs_own_sampler(source):                    # xrimodel (or a mix with it)
+        d = _sample_mixed(source, arf, exposure, rng)
+    elif hasattr(source, "components"):               # a SourceModel
         d = sample_photons_components(arf, source.components(), exposure, rng=rng)
     else:  # SimputSource / points
         d = sample_photons(
@@ -606,14 +649,13 @@ def generate_photons(
     else:
         ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     return PhotonList(
-        time=d["time"],
+        time=d["time"], 
         energy_kev=d["energy_kev"],
-        ra_deg=d["ra_deg"],
+        ra_deg=d["ra_deg"], 
         dec_deg=d["dec_deg"],
-        src_id=d["src_id"],
+        src_id=d["src_id"], 
         baseline_id=d["baseline_id"],
-        exposure=exposure,
-        ra_pnt=float(ra_pnt),
+        exposure=exposure, ra_pnt=float(ra_pnt), 
         dec_pnt=float(dec_pnt),
         meta={"seed": seed},
     )
@@ -706,14 +748,13 @@ def redistribute(
         rng = np.random.default_rng(seed)
 
     # attitude stream + per-photon off-axis angle (fringe axis + cross axis)
-    t_s = np.asarray(photons.time, dtype=float)  # arrival times [s]
-    attitude = instrument.gen_pointing(
-        float(t_s.max()) if t_s.size else 1.0, pointing=pointing
-    )
-    # attitude rows are spaced by instrument.time_step SECONDS, so the row for a
-    # photon is int(t / time_step) -- int(t) is only right at time_step = 1.
-    toa = attitude_index(t_s, instrument.time_step, attitude.shape[0])
-    theta, theta_perp = off_axis_angles_2d(attitude, toa, photons.loc_rad)
+    t_s = np.asarray(photons.time, dtype=float)          # arrival times [s]
+    attitude = instrument.gen_pointing(float(t_s.max()) if t_s.size else 1.0,
+                                       pointing=pointing)
+    # attitude rows are spaced by instrument.time_step SECONDS; each photon sees
+    # the attitude interpolated at its own arrival time
+    att = attitude_at(attitude, instrument.time_step, t_s)
+    theta, theta_perp = off_axis_angles_2d(att, None, photons.loc_rad)
 
     # 1) RMF energy redistribution (vectorized)
     pi, detected_kev, valid = redistribute_rmf(photons.energy_kev, rmf, rng=rng)
@@ -827,19 +868,19 @@ def redistribute(
         fov_img = None
 
     return EventList(
-        time=t_d,
-        energy_kev=detected_kev,
+        time=t_d, 
+        energy_kev=detected_kev, 
         true_energy_kev=true_kev,
-        dety=dety,
+        dety=dety, 
         detz=detz,
-        baseline_id=bidx,
-        pi=pi,
-        ra_deg=ra_v,
+        baseline_id=bidx, 
+        pi=pi, 
+        ra_deg=ra_v, 
         dec_deg=dec_v,
-        pointing=attitude,
+        pointing=attitude, 
         time_step=float(instrument.time_step),
-        ra_pnt=photons.ra_pnt,
-        dec_pnt=photons.dec_pnt,
+        ra_pnt=float(photons.ra_pnt), 
+        dec_pnt=float(photons.dec_pnt),
         ebounds=rmf.ebounds_dict,
         exposure=photons.exposure,
         fov=fov_img,

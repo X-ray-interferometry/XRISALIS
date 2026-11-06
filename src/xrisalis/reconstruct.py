@@ -6,11 +6,14 @@ Section 3 (drivers): reconstruct() and reconstruct_subbands().
 Section 4 (color): dirty beams, beam matching and reconstruct_rgb()."""
 
 from __future__ import annotations
+
 import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
-from .config import H, C, KEV, RAD2UAS, ARCSEC2RAD, RAD2ARCSEC
+
+from .config import ARCSEC2RAD, KEV, RAD2ARCSEC, RAD2UAS, C, H
+from .coords import tangent_offsets, tangent_to_sky
 from .units import to_arcsec, to_kev, to_radec_deg
 
 
@@ -491,9 +494,9 @@ def _resolve_phase_center(events, phase_center=None):
     ``None`` (default) is the observation's mean recorded pointing
     (:meth:`~xrisalis.io.EventList.mean_boresight`). Otherwise a sky position
     in the same convention as source positions: ``(ra_deg, dec_deg)`` (bare
-    numbers are degrees, Quantities are converted) or a SkyCoord. Either way
-    the result is a tangent-plane offset (North, East) from the events'
-    nominal pointing, on the same footing as the attitude stream.
+    numbers are degrees, Quantities are converted) or a SkyCoord, projected
+    onto the tangent plane at the nominal pointing (``events.ra_pnt``,
+    ``events.dec_pnt``) like the sources and the boresight.
     """
     if phase_center is None:
         return events.mean_boresight()
@@ -501,7 +504,11 @@ def _resolve_phase_center(events, phase_center=None):
         ra, dec = to_radec_deg(phase_center[0], phase_center[1])
     else:
         ra, dec = to_radec_deg(phase_center)
-    return events.radec_to_offsets(float(ra), float(dec))  # (pitch, yaw)
+    east, north = tangent_offsets(ra, dec, events.ra_pnt, events.dec_pnt)
+    if not (np.isfinite(east) and np.isfinite(north)):
+        raise ValueError("phase_center is on the far side of the sky from the "
+                         "nominal pointing")
+    return np.array([float(north), float(east)])          # (pitch, yaw)
 
 
 def _boresight_offsets(events, stream, correct_boresight, phase_center):
@@ -521,35 +528,33 @@ def _boresight_offsets(events, stream, correct_boresight, phase_center):
         return None, center
     off = events.boresight_per_event(stream) - center
     if not np.any(off):
-        return None, center  # fixed stare on the phase center
+        return None, center               # fixed stare on the phase center
     return off, center
 
 
 def _phase_center_deg(center, events):
-    """Tangent-plane ``(pitch, yaw)`` [rad] -> sky ``(ra_deg, dec_deg)``."""
-    ra, dec = events.offsets_to_radec(center)
+    """``(pitch, yaw)`` [rad] -> ``(ra_deg, dec_deg)`` for metadata."""
+    ra, dec = tangent_to_sky(center[1], center[0], events.ra_pnt, events.dec_pnt)
     return float(ra), float(dec)
 
 
-def reconstruct(
-    events,
-    instrument,
-    method="IFFT",
-    fov_arcsec=None,
-    energy_kev=None,
-    baseline_bounds=None,
-    baseline_ids=None,
-    samples=(256, 256),
-    npix=256,
-    fringe_taper=None,
-    deconvolve=None,
-    deconv_epsilon=0.5,
-    use_true_energy=False,
-    attitude=None,
-    correct_boresight=True,
-    phase_center=None,
-    verbose=False,
-):
+def reconstruct(events, 
+                instrument, 
+                method="IFFT", 
+                fov_arcsec=None,
+                energy_kev=None, 
+                baseline_bounds=None, 
+                baseline_ids=None,
+                samples=(256, 256), 
+                npix=256, 
+                fringe_taper=None,
+                deconvolve=None, 
+                deconv_epsilon=0.5,
+                use_true_energy=False, 
+                attitude=None, 
+                correct_boresight=True,
+                phase_center=None, 
+                verbose=False):
     """Reconstruct an image from an EventList.
 
     Parameters
@@ -841,19 +846,17 @@ def reconstruct_subbands(
     # (its internal grid n depends on wavelength, the pixel scale d does not).
     fov_uas = fov_arcsec * ARCSEC2RAD * RAD2UAS
     span_uas = (
-        fov_uas if method.upper() == "IFT" else target[0] * fov_uas / np.max(samples)
+      fov_uas if method.upper() == "IFT" else target[0] * fov_uas / np.max(samples)
     )
-    meta = {
-        "bands": list(bands),
-        "counts": counts,
-        "method": method.upper(),
-        "combine": combine,
-        "band_spans_uas": spans,
-        "pixel_scale_uas": span_uas / target[0],
-        "phase_center_deg": _phase_center_deg(
-            _resolve_phase_center(events, phase_center), events
-        ),
-    }
+    meta = {"bands": list(bands), 
+            "counts": counts, 
+            "method": method.upper(),
+            "combine": combine, 
+            "band_spans_uas": spans,
+            "pixel_scale_uas": span_uas / target[0],
+            "phase_center_deg": _phase_center_deg(
+                _resolve_phase_center(events, phase_center), events)
+           }
     return combined, span_uas, band_images, meta
 
 
@@ -1016,6 +1019,7 @@ class RGBImage:
         dirty beams follow as ``BEAM_R``/``BEAM_G``/``BEAM_B``.
         """
         from astropy.io import fits
+
         from .io import write_hdulist
 
         hdus = []
@@ -1263,27 +1267,20 @@ def reconstruct_rgb(
     elif match_beams and verbose:
         print("  beams NOT matched (an empty band, or with_beams=False)")
 
-    meta = {
-        "method": "IFFT",
-        "fov_arcsec": float(fov_arcsec),
-        "fringe_taper": (
-            fringe_taper
-            if isinstance(fringe_taper, (int, float))
-            else str(fringe_taper)
-        ),
-        "baselines_used": used,
-        "matched": matched_sigma is not None,
-        "phase_center_deg": _phase_center_deg(_center, events),
-    }
-    return RGBImage(
-        channels=channels,
-        span_uas=span_uas,
-        pixel_scale_uas=pixel_scale_uas,
-        bands=bands,
-        counts=counts,
-        beams=beams,
-        beam_sigmas_uas=sigmas,
-        matched_sigma_uas=matched_sigma,
-        channels_raw=raw,
-        meta=meta,
-    )
+    meta = {"method": "IFFT", 
+            "fov_arcsec": float(fov_arcsec),
+            "fringe_taper": (fringe_taper if isinstance(fringe_taper,
+                                                        (int, float))
+                             else str(fringe_taper)),
+            "baselines_used": used, "matched": matched_sigma is not None,
+            "phase_center_deg": _phase_center_deg(_center, events)}
+    return RGBImage(channels=channels, 
+                    span_uas=span_uas,
+                    pixel_scale_uas=pixel_scale_uas, 
+                    bands=bands,
+                    counts=counts, 
+                    beams=beams, 
+                    beam_sigmas_uas=sigmas,
+                    matched_sigma_uas=matched_sigma, 
+                    channels_raw=raw,
+                    meta=meta)

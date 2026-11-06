@@ -2,11 +2,11 @@
 attitude/pointing model + field of view)."""
 
 import math
+
 import numpy as np
 
-from .config import H, C, KEV
+from .config import KEV, C, H
 from .pointing import as_pointing
-
 
 # ==========================================================================
 # from baseline.py
@@ -388,15 +388,16 @@ class Interferometer:
         Sub-second ``time_step`` is what an attitude study needs: a jitter or
         gyro-residual stream carrying content near 1 Hz has to be sampled well
         below a second, while the photons still arrive over the full exposure.
-        Use :func:`~xrisalis.pointing.attitude_index` to map photon times onto
-        rows — never ``int(t)``, which is only correct at ``time_step = 1``.
+        Use :func:`~xrisalis.pointing.attitude_at` to get the attitude at photon
+        times (linear interpolation between rows).
 
         The boresight (pitch, yaw) columns come from the pointing model
         (``pointing`` argument if given, else ``self.pointing``; see
         :mod:`xrisalis.pointing`). Roll is then swept by ``self.roller`` unless
         the pointing model itself supplies a roll column
         (``provides_roll=True``). Finally ``self.wobble`` is applied if set.
-        With no pointing model the boresight stays at (0, 0).
+        With no pointing model the boresight stays at (0, 0): the nominal
+        pointing of the photon list (see :mod:`xrisalis.coords`).
         """
         T = int(float(t_exp) / float(self.time_step)) + 2
         attitude = np.zeros((T, 3))
