@@ -622,10 +622,13 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
     """
     exposure = to_seconds(exposure)                  # accept a time Quantity
     if pointing is None:
+        print("No pointing provided, using nominal pointing of the source.")
         ra_pnt, dec_pnt = nominal_pointing(source)
     elif is_skycoord(pointing):
+        print("Using SkyCoord pointing:", pointing)
         ra_pnt, dec_pnt = to_radec_deg(pointing)
     else:
+        print("Using provided pointing:", pointing)
         ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -644,10 +647,6 @@ def generate_photons(source, arf, exposure, rng=None, lightcurve=None,
             rng=rng,
             lightcurve=lightcurve,
         )
-    if is_skycoord(pointing):
-        ra_pnt, dec_pnt = to_radec_deg(pointing)
-    else:
-        ra_pnt, dec_pnt = to_radec_deg(pointing[0], pointing[1])
     return PhotonList(
         time=d["time"], 
         energy_kev=d["energy_kev"],
