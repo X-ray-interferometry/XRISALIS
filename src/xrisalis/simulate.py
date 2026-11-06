@@ -5,16 +5,18 @@ Section 2 (generate): source + ARF + exposure -> Photon List (Poisson photons).
 Section 3 (redistribute): Photon List + RMF + optics -> Event List."""
 
 from __future__ import annotations
+
 import warnings
+
 import numpy as np
 import scipy.special as sps
 import scipy.stats as sampler
-from .config import KEV, H, C
-from .io import PhotonList, EventList
-from .units import to_seconds, to_radec_deg, is_skycoord
-from .coords import nominal_pointing
-from .pointing import attitude_at
 
+from .config import KEV, C, H
+from .coords import nominal_pointing
+from .io import EventList, PhotonList
+from .pointing import attitude_at
+from .units import is_skycoord, to_radec_deg, to_seconds
 
 # ==========================================================================
 # from fringes.py

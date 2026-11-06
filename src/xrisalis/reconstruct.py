@@ -6,13 +6,15 @@ Section 3 (drivers): reconstruct() and reconstruct_subbands().
 Section 4 (color): dirty beams, beam matching and reconstruct_rgb()."""
 
 from __future__ import annotations
+
 import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
-from .config import H, C, KEV, RAD2UAS, ARCSEC2RAD, RAD2ARCSEC
-from .units import to_arcsec, to_kev, to_radec_deg
+
+from .config import ARCSEC2RAD, KEV, RAD2ARCSEC, RAD2UAS, C, H
 from .coords import tangent_offsets, tangent_to_sky
+from .units import to_arcsec, to_kev, to_radec_deg
 
 
 def _resolve_fov_arcsec(
@@ -1017,6 +1019,7 @@ class RGBImage:
         dirty beams follow as ``BEAM_R``/``BEAM_G``/``BEAM_B``.
         """
         from astropy.io import fits
+
         from .io import write_hdulist
 
         hdus = []

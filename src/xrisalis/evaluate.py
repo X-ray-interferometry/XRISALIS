@@ -25,9 +25,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .units import to_uas
-from .coords import nominal_pointing, tangent_offsets
 from .config import RAD2UAS
+from .coords import nominal_pointing, tangent_offsets
+from .units import to_uas
 
 
 # --------------------------------------------------------------------- coords

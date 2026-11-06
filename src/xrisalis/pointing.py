@@ -41,6 +41,7 @@ converted to radians internally.
 from __future__ import annotations
 
 import os
+
 import numpy as np
 
 from .units import to_rad

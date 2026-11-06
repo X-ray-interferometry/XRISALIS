@@ -11,9 +11,9 @@ Internally, the physics layer works in SI (radians, Joules, meters, seconds).
 Conversions happen only at the io/ boundary, never scattered through the code.
 """
 
-import numpy as np
 import astropy.constants as const
 import astropy.units as u
+import numpy as np
 
 # fundamental constants (SI) — sourced from astropy.constants (CODATA), kept as
 # plain float SI values so the numeric core works on floats/ndarrays, not

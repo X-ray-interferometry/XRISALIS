@@ -5,18 +5,20 @@ shared FITS helpers. astropy is the only FITS backend. Sky coords are degrees,
 energies keV, detector positions meters, times seconds on the FITS boundary."""
 
 from __future__ import annotations
+
 import datetime as _dt
 import os
 import re
 import warnings
+from dataclasses import dataclass, field
+
+import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
-from dataclasses import dataclass, field
-import numpy as np
-from .config import KEV, H, C
-from .coords import tangent_offsets
 
+from .config import KEV, C, H
+from .coords import tangent_offsets
 
 # ==========================================================================
 # from fits_base.py
@@ -47,7 +49,7 @@ def provenance_header(history=None, extra=None, seed=None):
     h["ORIGIN"] = ("XRISALIS", "X-ray interferometry sim & analysis")
     h["XRIVERS"] = (str(XRI_VERSION), "XRISALIS version")
     h["DATE"] = (
-        _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
         "File creation UTC",
     )
     h["TELESCOP"] = TELESCOP

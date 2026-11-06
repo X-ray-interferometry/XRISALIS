@@ -79,7 +79,7 @@ def nominal_pointing(source):
                 return sky_centroid(pos[:, 0], pos[:, 1])
         except (TypeError, NotImplementedError):
             pass
-    if hasattr(source, "ra_deg") and np.size(getattr(source, "ra_deg")):
+    if hasattr(source, "ra_deg") and np.size(source.ra_deg):
         return sky_centroid(source.ra_deg, source.dec_deg)
     return 0.0, 0.0
 

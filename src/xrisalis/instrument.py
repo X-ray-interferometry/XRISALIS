@@ -2,11 +2,11 @@
 attitude/pointing model + field of view)."""
 
 import math
+
 import numpy as np
 
-from .config import H, C, KEV
+from .config import KEV, C, H
 from .pointing import as_pointing
-
 
 # ==========================================================================
 # from baseline.py

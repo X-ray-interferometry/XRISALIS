@@ -26,9 +26,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .io import SimputSource, read_fits_image, read_fits_cube
-from .units import to_deg, to_arcsec, to_kev, to_radec_deg, is_skycoord
 from .coords import tangent_to_sky
+from .io import SimputSource, read_fits_cube, read_fits_image
+from .units import is_skycoord, to_arcsec, to_deg, to_kev, to_radec_deg
 
 DEG_PER_ARCSEC = 1.0 / 3600.0
 ARCSEC2RAD = np.pi / (180.0 * 3600.0)

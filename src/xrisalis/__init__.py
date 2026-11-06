@@ -1,11 +1,6 @@
 """XRISALIS — X-ray interferometry simulation and analysis"""
 
-from . import colormaps, config, evaluate, products, sources, units, viz
-from . import coords
-from .coords import (
-    sky_to_tangent,
-    tangent_to_sky,
-)
+from . import colormaps, config, coords, evaluate, products, sources, units, viz
 from . import detector as detector_models
 from . import pointing as pointing_models
 from .colormaps import xri_cmap, xri_cmap_r, xri_legacy
@@ -19,6 +14,12 @@ from .config import (
     energy_to_wavelength,
     joule_to_kev,
     kev_to_joule,
+)
+from .coords import (
+    nominal_pointing,
+    sky_offset_deg,
+    tangent_offsets,
+    tangent_to_sky,
 )
 from .detector import Chip, Detector
 from .evaluate import EvaluationResult
@@ -37,12 +38,6 @@ from .io import (
     read_fits_cube,
     read_fits_image,
     resolve_reference,
-)
-from .coords import (
-    nominal_pointing,
-    sky_offset_deg,
-    tangent_offsets,
-    tangent_to_sky,
 )
 from .pointing import (
     Pointing,
@@ -132,20 +127,17 @@ __all__ = [
     "SimputEntry",
     "SimputSource",
     "SourceModel",
-    "XrimodelSource",
     "Spectrum",
+    "XrimodelSource",
     "as_pointing",
     "attitude_at",
-    "nominal_pointing",
-    "sky_offset_deg",
-    "tangent_offsets",
-    "tangent_to_sky",
     "beam_sigma_uas",
     "coherence_envelope",
     "colormaps",
     "compute_uv",
     "config",
     "constant_pointing",
+    "coords",
     "cube_source",
     "detector_models",
     "dirty_beam",
@@ -172,11 +164,9 @@ __all__ = [
     "model_image_source",
     "monochromatic",
     "no_roll",
+    "nominal_pointing",
     "off_axis_angles",
     "off_axis_angles_2d",
-    "coords",
-    "sky_to_tangent",
-    "tangent_to_sky",
     "point_source",
     "pointing_from_file",
     "pointing_from_function",
@@ -199,6 +189,8 @@ __all__ = [
     "sample_photons",
     "simulate_detz",
     "simulate_positions",
+    "sky_offset_deg",
+    "sky_to_tangent",
     "smooth_roll",
     "sources",
     "spectra_per_baseline",
@@ -206,6 +198,8 @@ __all__ = [
     "spectrum_from_file",
     "spectrum_from_lmfit",
     "spectrum_from_model",
+    "tangent_offsets",
+    "tangent_to_sky",
     "to_arcsec",
     "to_deg",
     "to_kev",

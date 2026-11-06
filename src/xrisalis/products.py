@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from astropy.io import fits
 
-from .io import provenance_header, write_hdulist, col
+from .io import col, provenance_header, write_hdulist
 
 
 # ============================================================================
@@ -99,7 +99,7 @@ class Spectrum:
         h["HDUCLAS3"] = "COUNT"
         h["HDUVERS"] = "1.2.1"
         h["CHANTYPE"] = "PI"
-        h["DETCHANS"] = int(len(self.channel))
+        h["DETCHANS"] = len(self.channel)
         h["POISSERR"] = True
         h["AREASCAL"] = 1.0
         h["BACKSCAL"] = 1.0
