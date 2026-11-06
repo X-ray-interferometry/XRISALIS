@@ -1,5 +1,7 @@
 *.pyc
 .vscode/
+.venv/
+
 
 ignore/
 dist/
@@ -8,12 +10,41 @@ figures/
 random/
 output_data/
 results/
-
-src/xrisalis/models/*
-!src/xrisalis/models/arf.fits
-!src/xrisalis/models/rmf.fits
+wheels/
+_to_delete/
+dev/
+docs/
+sixte_if/
+figs/
 
 *.egg-info/
 *.pdf
 simulation.py
 src/xrisalis/version.py
+
+# --- OS / editor / tool caches
+.DS_Store
+*~
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- simulation outputs
+/*.fits
+
+# --- example notebooks: not published until curated
+examples/
+
+# --- talk / science-case source models (large; regenerate from dev/ scripts)
+/models/
+
+# --- personal / obsolete working files (not for the public repo)
+XRISALIS_project_handoff.md
+user_test_notebook.ipynb
+
+# --- tests: kept local for now; whitelist the ones to publish, e.g.
+#     !tests/test_physics_core.py
+# (this also keeps the fixture generator, tests/_fixtures.py and any
+#  tests/fixtures/ output out of the repo for now)
+tests/*
+!tests/test_basic.py

@@ -19,8 +19,7 @@ Requirements
  
 * **Python 3.11 or newer**
  
-The core scientific dependencies (``numpy``, ``astropy``, ``matplotlib``,
-``pandas``, ``scipy`` and ``pillow``) are installed automatically and do not
+The core scientific dependencies (``numpy``, ``astropy``, ``matplotlib``, ``scipy`` and ``pillow``) are installed automatically and do not
 need to be set up by hand. To run the example notebook provided in the repository, you will also need ``jupyter`` and ``ipywidgets``.
  
 1. Clone the repository

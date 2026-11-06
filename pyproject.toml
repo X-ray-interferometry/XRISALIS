@@ -11,7 +11,6 @@ dependencies = [
     "numpy~=2.4",
     "astropy~=7.2",
     "matplotlib~=3.10",
-    "pandas~=3.0",
     "scipy~=1.17",
     "pillow~=12.1",
 ]
@@ -19,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff~=0.13.2",
+    "pytest",
 ]
 
 [build-system]
@@ -41,7 +41,13 @@ __semantic_version__ = "{scm_version.tag}"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"xrisalis" = ["data/**/*.fits", "styles/*.mplstyle"]
+
 [tool.ruff]
 # Ignore the auto-generated file
 include = ["src/xrisalis/*.py"]
 exclude = ["src/xrisalis/version.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
