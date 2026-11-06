@@ -6,26 +6,27 @@ plus a shape label. It is deliberately a small, explicit object so it can later
 grow the rest of the detector physics without changing call sites:
 
 * full pixel geometry (pitch, gaps, tiling) and detector shape;
-* per-event **positional reconstruction via charge-cloud modelling** (splitting
-  charge across neighbouring pixels, then estimating the sub-pixel impact
+* per-event **positional reconstruction via charge-cloud modeling** (splitting
+  charge across neighboring pixels, then estimating the sub-pixel impact
   position) — the hook is :meth:`reconstruct_position`, not implemented yet;
 * Nyquist checks that the pixel pitch samples the fringe spacing
   ``Δy_f = λ / beam_angle``.
 
-Lengths are metres (the package's internal detector unit); astropy length
+Lengths are meters (the package's internal detector unit); astropy length
 Quantities are accepted and converted.
 """
+
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import astropy.units as u
 
 
 def _to_m(value):
-    """Length -> metres. Quantity converted; bare number assumed metres."""
+    """Length -> meters. Quantity converted; bare number assumed meters."""
     if value is None:
         return None
     if isinstance(value, u.Quantity):
@@ -37,8 +38,8 @@ def _to_m(value):
 class Chip:
     """One detector chip on the focal plane.
 
-    A chip is a rectangular pixel array placed at ``(cx_m, cy_m)`` (its centre)
-    in focal-plane metres. Focal-plane axes: ``x`` runs along the fringe (DETY)
+    A chip is a rectangular pixel array placed at ``(cx_m, cy_m)`` (its center)
+    in focal-plane meters. Focal-plane axes: ``x`` runs along the fringe (DETY)
     direction, ``y`` along the cross (DETZ) direction. Pixel indexing has its
     origin at the chip's lower-left corner (col along +x, row along +y).
 
@@ -100,7 +101,7 @@ class Detector:
     half_extent_cross_m: float = None
     shape: str = "rect"
     name: str = ""
-    chips: list = None          # list[Chip]; a segmented multi-chip focal plane
+    chips: list = None  # list[Chip]; a segmented multi-chip focal plane
 
     def __post_init__(self):
         self.pixel_m = _to_m(self.pixel_m)
@@ -114,14 +115,15 @@ class Detector:
 
     # -- multi-chip focal plane ----------------------------------------------
     @classmethod
-    def tiled_layout(cls, instrument, pixel_m=1e-5, margin=1.3, gap_m=2e-3,
-                     axis="y", name=""):
+    def tiled_layout(
+        cls, instrument, pixel_m=1e-5, margin=1.3, gap_m=2e-3, axis="y", name=""
+    ):
         """Build a default focal plane: one chip per baseline, tiled in a strip.
 
         Each baseline's pattern (fringe extent ``W*num_pairs`` along DETY, shadow
         extent ``Wz`` along DETZ) gets its own chip. Chips are uniform (sized to
         the largest baseline, times ``margin``) and tiled along the cross axis
-        (``axis='y'``, the default) with ``gap_m`` between them, centred on the
+        (``axis='y'``, the default) with ``gap_m`` between them, centered on the
         fringe axis. Baseline ``i`` -> chip ``i``. This is a convenience default;
         supply an explicit ``chips=[...]`` list for a real focal-plane layout.
         """
@@ -129,21 +131,31 @@ class Detector:
         gap_m = _to_m(gap_m)
         bls = instrument.baselines
         # uniform chip size from the widest pattern (+ margin)
-        wy = margin * max(getattr(b, "overlap_span", b.W * b.num_pairs)
-                          for b in bls)                 # fringe (x) extent
+        wy = margin * max(
+            getattr(b, "overlap_span", b.W * b.num_pairs) for b in bls
+        )  # fringe (x) extent
         wz = margin * max(getattr(b, "Wz", 1e-2) for b in bls)  # cross (y) extent
         nx = int(math.ceil(wy / pixel_m))
         ny = int(math.ceil(wz / pixel_m))
-        pitch = ny * pixel_m + gap_m                            # chip-to-chip step
+        pitch = ny * pixel_m + gap_m  # chip-to-chip step
         n = len(bls)
         chips = []
         for i in range(n):
             if axis == "y":
                 cx, cy = 0.0, (i - (n - 1) / 2.0) * pitch
-            else:                                              # tile along x
+            else:  # tile along x
                 cx, cy = (i - (n - 1) / 2.0) * (nx * pixel_m + gap_m), 0.0
-            chips.append(Chip(chip_id=i, cx_m=cx, cy_m=cy, nx=nx, ny=ny,
-                              pixel_m=pixel_m, baseline_ids=(i,)))
+            chips.append(
+                Chip(
+                    chip_id=i,
+                    cx_m=cx,
+                    cy_m=cy,
+                    nx=nx,
+                    ny=ny,
+                    pixel_m=pixel_m,
+                    baseline_ids=(i,),
+                )
+            )
         return cls(pixel_m=pixel_m, chips=chips, name=name)
 
     def chip_for_baseline(self, baseline_id):
@@ -153,9 +165,9 @@ class Detector:
         """Map baseline-local ``(dety, detz)`` [m] onto the focal plane.
 
         Returns a dict of arrays: ``chip_id``; ``chipx``/``chipy`` (pixel col/row
-        within the chip, origin at lower-left); ``chipx_m``/``chipy_m`` (metres
-        from the chip corner); ``focx``/``focy`` (total focal-plane metres). The
-        baseline's pattern is centred on its chip, so ``focx = chip.cx + dety``,
+        within the chip, origin at lower-left); ``chipx_m``/``chipy_m`` (meters
+        from the chip corner); ``focx``/``focy`` (total focal-plane meters). The
+        baseline's pattern is centered on its chip, so ``focx = chip.cx + dety``,
         ``focy = chip.cy + detz``. Photons on a baseline with no chip get
         ``chip_id = -1`` and NaN coordinates.
         """
@@ -164,12 +176,22 @@ class Detector:
         detz = np.asarray(detz, float)
         n = dety.size
         chip_id = np.full(n, -1, dtype=np.int32)
-        focx = np.full(n, np.nan); focy = np.full(n, np.nan)
-        chipx = np.full(n, np.nan); chipy = np.full(n, np.nan)
-        chipx_m = np.full(n, np.nan); chipy_m = np.full(n, np.nan)
+        focx = np.full(n, np.nan)
+        focy = np.full(n, np.nan)
+        chipx = np.full(n, np.nan)
+        chipy = np.full(n, np.nan)
+        chipx_m = np.full(n, np.nan)
+        chipy_m = np.full(n, np.nan)
         if not self.chips:
-            return dict(chip_id=chip_id, chipx=chipx, chipy=chipy,
-                        chipx_m=chipx_m, chipy_m=chipy_m, focx=focx, focy=focy)
+            return dict(
+                chip_id=chip_id,
+                chipx=chipx,
+                chipy=chipy,
+                chipx_m=chipx_m,
+                chipy_m=chipy_m,
+                focx=focx,
+                focy=focy,
+            )
         for c in self.chips:
             sel = np.isin(baseline_id, np.asarray(c.baseline_ids, int))
             if not sel.any():
@@ -177,13 +199,23 @@ class Detector:
             fx = c.cx_m + dety[sel]
             fy = c.cy_m + detz[sel]
             chip_id[sel] = c.chip_id
-            focx[sel] = fx; focy[sel] = fy
-            lx = fx - c.x0_m; ly = fy - c.y0_m          # metres from chip corner
-            chipx_m[sel] = lx; chipy_m[sel] = ly
-            chipx[sel] = lx / c.pixel_m                  # pixel col/row
+            focx[sel] = fx
+            focy[sel] = fy
+            lx = fx - c.x0_m
+            ly = fy - c.y0_m  # meters from chip corner
+            chipx_m[sel] = lx
+            chipy_m[sel] = ly
+            chipx[sel] = lx / c.pixel_m  # pixel col/row
             chipy[sel] = ly / c.pixel_m
-        return dict(chip_id=chip_id, chipx=chipx, chipy=chipy,
-                    chipx_m=chipx_m, chipy_m=chipy_m, focx=focx, focy=focy)
+        return dict(
+            chip_id=chip_id,
+            chipx=chipx,
+            chipy=chipy,
+            chipx_m=chipx_m,
+            chipy_m=chipy_m,
+            focx=focx,
+            focy=focy,
+        )
 
     def fringe_half_extent_m(self):
         """Half-extent along the fringe axis [m], or None if unbounded."""
@@ -207,10 +239,11 @@ class Detector:
         estimating the reconstructed position (with its bias/blur).
         """
         raise NotImplementedError(
-            "charge-cloud positional reconstruction is not implemented yet")
+            "charge-cloud positional reconstruction is not implemented yet"
+        )
 
     def __repr__(self):
-        s = f"Detector(pixel={self.pixel_m*1e6:.3g} um"
+        s = f"Detector(pixel={self.pixel_m * 1e6:.3g} um"
         if self.half_extent_m is not None:
-            s += f", half_extent={self.half_extent_m*1e3:.3g} mm"
+            s += f", half_extent={self.half_extent_m * 1e3:.3g} mm"
         return s + f", shape={self.shape!r})"

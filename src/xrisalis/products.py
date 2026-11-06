@@ -6,6 +6,7 @@ those tools — computation is pure NumPy and the writer reuses the FITS helpers
 in :mod:`xrisalis.io`. Plotting lives in ``viz`` (kept separate); these classes
 only compute and read/write.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,12 +23,13 @@ from .io import provenance_header, write_hdulist, col
 @dataclass
 class Spectrum:
     """Counts-per-channel spectrum (OGIP ``SPECTRUM``/PHA)."""
-    channel: np.ndarray            # channel numbers
-    counts: np.ndarray             # counts per channel
-    e_min: np.ndarray = None       # channel lower energy [keV] (optional)
-    e_max: np.ndarray = None       # channel upper energy [keV]
+
+    channel: np.ndarray  # channel numbers
+    counts: np.ndarray  # counts per channel
+    e_min: np.ndarray = None  # channel lower energy [keV] (optional)
+    e_max: np.ndarray = None  # channel upper energy [keV]
     exposure: float = None
-    baseline_id: int = None        # None = all baselines
+    baseline_id: int = None  # None = all baselines
     respfile: str = None
     ancrfile: str = None
     meta: dict = field(default_factory=dict)
@@ -39,8 +41,11 @@ class Spectrum:
     @property
     def energy(self):
         """Channel mid energy [keV] (None if EBOUNDS not attached)."""
-        return None if self.e_min is None else 0.5 * (np.asarray(self.e_min)
-                                                       + np.asarray(self.e_max))
+        return (
+            None
+            if self.e_min is None
+            else 0.5 * (np.asarray(self.e_min) + np.asarray(self.e_max))
+        )
 
     @property
     def rate(self):
@@ -52,7 +57,7 @@ class Spectrum:
     def from_events(cls, events, baseline_id=None, respfile=None, ancrfile=None):
         mask = np.ones(len(events), bool)
         if baseline_id is not None:
-            mask &= (events.baseline_id == baseline_id)
+            mask &= events.baseline_id == baseline_id
         pi = np.asarray(events.pi)[mask]
         eb = getattr(events, "ebounds", None)
         if eb is not None:
@@ -69,14 +74,23 @@ class Spectrum:
             chan0 = 0
         good = pi >= 0
         counts = np.bincount(pi[good] - chan0, minlength=nchan)[:nchan]
-        return cls(channel=channel, counts=counts.astype(np.int64),
-                   e_min=e_min, e_max=e_max, exposure=events.exposure,
-                   baseline_id=baseline_id, respfile=respfile, ancrfile=ancrfile)
+        return cls(
+            channel=channel,
+            counts=counts.astype(np.int64),
+            e_min=e_min,
+            e_max=e_max,
+            exposure=events.exposure,
+            baseline_id=baseline_id,
+            respfile=respfile,
+            ancrfile=ancrfile,
+        )
 
     # -- io -------------------------------------------------------------------
     def _spectrum_hdu(self):
-        cols = [col("CHANNEL", "J", self.channel),
-                col("COUNTS", "J", self.counts, "count")]
+        cols = [
+            col("CHANNEL", "J", self.channel),
+            col("COUNTS", "J", self.counts, "count"),
+        ]
         h = provenance_header(history="Spectrum (products stage)")
         h["EXTNAME"] = "SPECTRUM"
         h["HDUCLASS"] = "OGIP"
@@ -104,9 +118,11 @@ class Spectrum:
         return fits.BinTableHDU.from_columns(cols, header=h)
 
     def _ebounds_hdu(self):
-        cols = [col("CHANNEL", "J", self.channel),
-                col("E_MIN", "E", self.e_min, "keV"),
-                col("E_MAX", "E", self.e_max, "keV")]
+        cols = [
+            col("CHANNEL", "J", self.channel),
+            col("E_MIN", "E", self.e_min, "keV"),
+            col("E_MAX", "E", self.e_max, "keV"),
+        ]
         h = fits.Header()
         h["EXTNAME"] = "EBOUNDS"
         h["HDUCLASS"] = "OGIP"
@@ -132,12 +148,16 @@ class Spectrum:
                 e_min = np.asarray(ed["E_MIN"], float)
                 e_max = np.asarray(ed["E_MAX"], float)
             bl = hdr.get("BASELINE")
-            return cls(channel=np.asarray(d["CHANNEL"]),
-                       counts=np.asarray(d["COUNTS"]),
-                       e_min=e_min, e_max=e_max,
-                       exposure=hdr.get("EXPOSURE"),
-                       baseline_id=None if bl in (None, -1) else int(bl),
-                       respfile=hdr.get("RESPFILE"), ancrfile=hdr.get("ANCRFILE"))
+            return cls(
+                channel=np.asarray(d["CHANNEL"]),
+                counts=np.asarray(d["COUNTS"]),
+                e_min=e_min,
+                e_max=e_max,
+                exposure=hdr.get("EXPOSURE"),
+                baseline_id=None if bl in (None, -1) else int(bl),
+                respfile=hdr.get("RESPFILE"),
+                ancrfile=hdr.get("ANCRFILE"),
+            )
 
 
 # ============================================================================
@@ -146,40 +166,54 @@ class Spectrum:
 @dataclass
 class LightCurve:
     """Binned light curve (OGIP ``RATE``)."""
-    time: np.ndarray               # bin-centre time [s]
-    rate: np.ndarray               # counts/s
-    error: np.ndarray              # counts/s (Poisson)
-    timedel: float                 # bin width [s]
+
+    time: np.ndarray  # bin-center time [s]
+    rate: np.ndarray  # counts/s
+    error: np.ndarray  # counts/s (Poisson)
+    timedel: float  # bin width [s]
     exposure: float = None
     energy_kev: tuple = None
     baseline_bounds: tuple = None
     meta: dict = field(default_factory=dict)
 
     @classmethod
-    def from_events(cls, events, dt, energy_kev=None, baseline_bounds=None,
-                    tstart=0.0, tstop=None):
+    def from_events(
+        cls, events, dt, energy_kev=None, baseline_bounds=None, tstart=0.0, tstop=None
+    ):
         mask = np.ones(len(events), bool)
         if energy_kev is not None:
             ek = events.energy_kev
             mask &= (ek > energy_kev[0]) & (ek < energy_kev[1])
         if baseline_bounds is not None:
-            mask &= ((events.baseline_id >= baseline_bounds[0])
-                     & (events.baseline_id <= baseline_bounds[1]))
+            mask &= (events.baseline_id >= baseline_bounds[0]) & (
+                events.baseline_id <= baseline_bounds[1]
+            )
         t = np.asarray(events.time)[mask]
         if tstop is None:
-            tstop = float(events.exposure) if events.exposure else \
-                (float(t.max()) if t.size else dt)
+            tstop = (
+                float(events.exposure)
+                if events.exposure
+                else (float(t.max()) if t.size else dt)
+            )
         edges = np.arange(tstart, tstop + dt, dt)
         counts, _ = np.histogram(t, bins=edges)
-        centres = 0.5 * (edges[:-1] + edges[1:])
-        return cls(time=centres, rate=counts / dt, error=np.sqrt(counts) / dt,
-                   timedel=float(dt), exposure=float(tstop - tstart),
-                   energy_kev=energy_kev, baseline_bounds=baseline_bounds)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        return cls(
+            time=centers,
+            rate=counts / dt,
+            error=np.sqrt(counts) / dt,
+            timedel=float(dt),
+            exposure=float(tstop - tstart),
+            energy_kev=energy_kev,
+            baseline_bounds=baseline_bounds,
+        )
 
     def _rate_hdu(self):
-        cols = [col("TIME", "D", self.time, "s"),
-                col("RATE", "E", self.rate, "count/s"),
-                col("ERROR", "E", self.error, "count/s")]
+        cols = [
+            col("TIME", "D", self.time, "s"),
+            col("RATE", "E", self.rate, "count/s"),
+            col("ERROR", "E", self.error, "count/s"),
+        ]
         h = provenance_header(history="LightCurve (products stage)")
         h["EXTNAME"] = "RATE"
         h["HDUCLASS"] = "OGIP"
@@ -208,11 +242,14 @@ class LightCurve:
             ek = None
             if "E_MIN" in hdr and "E_MAX" in hdr:
                 ek = (hdr["E_MIN"], hdr["E_MAX"])
-            return cls(time=np.asarray(d["TIME"], float),
-                       rate=np.asarray(d["RATE"], float),
-                       error=np.asarray(d["ERROR"], float),
-                       timedel=hdr.get("TIMEDEL"), exposure=hdr.get("EXPOSURE"),
-                       energy_kev=ek)
+            return cls(
+                time=np.asarray(d["TIME"], float),
+                rate=np.asarray(d["RATE"], float),
+                error=np.asarray(d["ERROR"], float),
+                timedel=hdr.get("TIMEDEL"),
+                exposure=hdr.get("EXPOSURE"),
+                energy_kev=ek,
+            )
 
 
 # ============================================================================
@@ -225,11 +262,14 @@ def spectrum(events, baseline_id=None, **kw):
 
 def spectra_per_baseline(events, **kw):
     """dict {baseline_id: Spectrum} for every populated baseline."""
-    return {int(b): Spectrum.from_events(events, baseline_id=int(b), **kw)
-            for b in np.unique(events.baseline_id)}
+    return {
+        int(b): Spectrum.from_events(events, baseline_id=int(b), **kw)
+        for b in np.unique(events.baseline_id)
+    }
 
 
 def lightcurve(events, dt, energy_kev=None, baseline_bounds=None, **kw):
     """Binned light curve from an EventList (bin width ``dt`` seconds)."""
-    return LightCurve.from_events(events, dt, energy_kev=energy_kev,
-                                  baseline_bounds=baseline_bounds, **kw)
+    return LightCurve.from_events(
+        events, dt, energy_kev=energy_kev, baseline_bounds=baseline_bounds, **kw
+    )

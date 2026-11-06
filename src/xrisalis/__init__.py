@@ -1,6 +1,11 @@
-"""XRISALIS — X-ray interferometry simulation and analysis (restructured, dev)."""
+"""XRISALIS — X-ray interferometry simulation and analysis"""
 
 from . import colormaps, config, evaluate, products, sources, units, viz
+from . import coords
+from .coords import (
+    sky_to_tangent,
+    tangent_to_sky,
+)
 from . import detector as detector_models
 from . import pointing as pointing_models
 from .colormaps import xri_cmap, xri_cmap_r, xri_legacy
@@ -169,6 +174,9 @@ __all__ = [
     "no_roll",
     "off_axis_angles",
     "off_axis_angles_2d",
+    "coords",
+    "sky_to_tangent",
+    "tangent_to_sky",
     "point_source",
     "pointing_from_file",
     "pointing_from_function",

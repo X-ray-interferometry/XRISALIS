@@ -3,7 +3,7 @@
 Section 1 (transforms): gridded IFFT and direct IFT (pure physics).
 Section 2 (uv): filter events + compute uv-coordinates/visibilities + taper.
 Section 3 (drivers): reconstruct() and reconstruct_subbands().
-Section 4 (colour): dirty beams, beam matching and reconstruct_rgb()."""
+Section 4 (color): dirty beams, beam matching and reconstruct_rgb()."""
 
 from __future__ import annotations
 import warnings
@@ -15,15 +15,21 @@ from .units import to_arcsec, to_kev, to_radec_deg
 from .coords import tangent_offsets, tangent_to_sky
 
 
-def _resolve_fov_arcsec(fov_arcsec, events, instrument, energy_kev=None,
-                        baseline_bounds=None, baseline_ids=None):
+def _resolve_fov_arcsec(
+    fov_arcsec,
+    events,
+    instrument,
+    energy_kev=None,
+    baseline_bounds=None,
+    baseline_ids=None,
+):
     """Return a FoV in arcsec, deriving it from the instrument/events if None.
 
     Precedence when ``fov_arcsec is None``: the imaging FoV cached on the
     EventList at redistribute time (includes the coherence term), else
     :meth:`Interferometer.field_of_view` (geometry only, no RMF here), else a
     legacy 1.6 mas fallback (with a warning). An explicit ``fov_arcsec`` (number
-    or Quantity) is always honoured.
+    or Quantity) is always honored.
     """
     if fov_arcsec is not None:
         return to_arcsec(fov_arcsec)
@@ -31,20 +37,26 @@ def _resolve_fov_arcsec(fov_arcsec, events, instrument, energy_kev=None,
     if fov_rad is None or not np.isfinite(fov_rad):
         try:
             fov_rad = instrument.field_of_view(
-                energy_kev=energy_kev, baseline_bounds=baseline_bounds,
-                baseline_ids=baseline_ids, which="imaging")
+                energy_kev=energy_kev,
+                baseline_bounds=baseline_bounds,
+                baseline_ids=baseline_ids,
+                which="imaging",
+            )
         except Exception:
             fov_rad = None
     if fov_rad is None or not np.isfinite(fov_rad):
-        warnings.warn("could not derive a field of view from the instrument or "
-                      "events; falling back to 1.6 mas. Pass fov_arcsec "
-                      "explicitly to silence this.")
+        warnings.warn(
+            "could not derive a field of view from the instrument or "
+            "events; falling back to 1.6 mas. Pass fov_arcsec "
+            "explicitly to silence this."
+        )
         return 1.6e-3
     return float(fov_rad) * RAD2ARCSEC
 
 
-def _grid_safe_fov_arcsec(fov_arcsec, max_energy_kev, max_baseline_D,
-                          n_samples, safety=0.9):
+def _grid_safe_fov_arcsec(
+    fov_arcsec, max_energy_kev, max_baseline_D, n_samples, safety=0.9
+):
     """Cap the FoV so an ``n_samples``-pixel grid still samples the finest fringe.
 
     The reconstruction pixel scale is ``fov / n_samples``; it must stay below the
@@ -53,14 +65,16 @@ def _grid_safe_fov_arcsec(fov_arcsec, max_energy_kev, max_baseline_D,
     arcsec, warning when it caps. Increase ``samples``/``npix`` to image wider.
     """
     lam_min = H * C / (float(max_energy_kev) * KEV)
-    cap_arcsec = (safety * int(n_samples) * lam_min / float(max_baseline_D)) \
-        * RAD2ARCSEC
+    cap_arcsec = (
+        safety * int(n_samples) * lam_min / float(max_baseline_D)
+    ) * RAD2ARCSEC
     if fov_arcsec > cap_arcsec:
         warnings.warn(
-            f"field of view capped to {cap_arcsec*1e3:.3g} mas so the "
+            f"field of view capped to {cap_arcsec * 1e3:.3g} mas so the "
             f"{int(n_samples)}-pixel grid samples the finest fringe "
             f"(≤{max_energy_kev:.2g} keV, D≤{max_baseline_D:.3g} m); pass a "
-            f"larger samples/npix to image a wider field.")
+            f"larger samples/npix to image a wider field."
+        )
         return cap_arcsec
     return fov_arcsec
 
@@ -72,9 +86,11 @@ def _grid_safe_fov_arcsec(fov_arcsec, max_energy_kev, max_baseline_D,
 # optional acceleration, silent fallback to numpy
 try:  # pragma: no cover
     import pyfftw.interfaces.numpy_fft as _fft
+
     _HAVE_PYFFTW = True
 except Exception:  # pragma: no cover
     import numpy.fft as _fft
+
     _HAVE_PYFFTW = False
 
 
@@ -85,9 +101,18 @@ def _grid_params(fov, samples, min_baseline_D, max_wavelength, error):
     return d, int(n)
 
 
-def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
-               samples=(512, 512), error=0.1, coherence=None,
-               deconv_epsilon=0.1, verbose=False):
+def ifft_image(
+    uv,
+    vis,
+    fov,
+    energies_j,
+    min_baseline_D,
+    samples=(512, 512),
+    error=0.1,
+    coherence=None,
+    deconv_epsilon=0.1,
+    verbose=False,
+):
     """Gridded inverse-FFT reconstruction.
 
     Parameters
@@ -111,7 +136,7 @@ def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
 
         i.e. each photon is weighted by its own coherence (down-weighting the
         chromatically scrambled high-fringe-order photons rather than amplifying
-        them), then the cell is normalised by its accumulated squared coherence.
+        them), then the cell is normalized by its accumulated squared coherence.
         This is the correct place to undo chromatic decoherence — per-cell after
         binning, never per-photon. As ``deconv_epsilon`` grows it converges to an
         optimal D-shaped taper; as it shrinks it deconvolves more aggressively at
@@ -119,7 +144,7 @@ def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
         noise. The scrambled long-baseline phase is genuinely lost, so this does
         not out-resolve the fringe-order taper — it recovers a clean image with a
         principled, RMF-derived weighting.
-    deconv_epsilon : float  Wiener regularisation (fraction of peak sum D^2).
+    deconv_epsilon : float  Wiener regularization (fraction of peak sum D^2).
 
     Returns
     -------
@@ -147,15 +172,16 @@ def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
         grid_num = np.zeros((n, n), dtype=np.complex128)
         grid_den = np.zeros((n, n), dtype=np.float64)
         np.add.at(grid_num, (u_conv, v_conv), cwt * vis)
-        np.add.at(grid_den, (u_conv, v_conv), cwt ** 2)
+        np.add.at(grid_den, (u_conv, v_conv), cwt**2)
         reg = deconv_epsilon * grid_den.max()
         if reg <= 0:
             reg = 1.0
         grid = grid_num / (grid_den + reg)
         if verbose:
             filled = int(np.count_nonzero(grid_den))
-            print(f"IFFT matched-filter deconvolution: {filled} uv cells, "
-                  f"reg {reg:.3g}")
+            print(
+                f"IFFT matched-filter deconvolution: {filled} uv cells, reg {reg:.3g}"
+            )
 
     img = np.real(_fft.ifft2(grid))
     img = np.roll(img, int(round(img.shape[0] / 2)), axis=0)
@@ -176,9 +202,14 @@ def ifft_image(uv, vis, fov, energies_j, min_baseline_D,
     # angular span of the *cropped* image: n_pix_out * pixel_scale, pixel scale = d
     crop_span_uas = cropped.shape[0] * d * RAD2UAS
     full_grid_span_uas = n * d * RAD2UAS
-    meta = {"d": d, "n": n, "method": "IFFT", "pyfftw": _HAVE_PYFFTW,
-            "full_grid_span_uas": full_grid_span_uas,
-            "pixel_scale_uas": d * RAD2UAS}
+    meta = {
+        "d": d,
+        "n": n,
+        "method": "IFFT",
+        "pyfftw": _HAVE_PYFFTW,
+        "full_grid_span_uas": full_grid_span_uas,
+        "pixel_scale_uas": d * RAD2UAS,
+    }
     return cropped, crop_span_uas, meta
 
 
@@ -195,10 +226,10 @@ def ift_image(uv, vis, fov, npix=256, mem_budget_mb=256):
     ax = np.linspace(-half, half, npix)
     # row coordinate pairs with u, column coordinate pairs with v, matching the
     # gridded IFFT convention np.add.at(grid,(u_idx,v_idx)) -> ifft2 (axis0=u).
-    row_coord = ax[:, None] * np.ones((1, npix))   # varies down rows
-    col_coord = np.ones((npix, 1)) * ax[None, :]   # varies across columns
-    flat_row = row_coord.ravel()[None, :]          # pairs with u
-    flat_col = col_coord.ravel()[None, :]          # pairs with v
+    row_coord = ax[:, None] * np.ones((1, npix))  # varies down rows
+    col_coord = np.ones((npix, 1)) * ax[None, :]  # varies across columns
+    flat_row = row_coord.ravel()[None, :]  # pairs with u
+    flat_col = col_coord.ravel()[None, :]  # pairs with v
     npix2 = npix * npix
 
     # size chunk so (chunk x npix^2) complex128 stays under the budget
@@ -206,24 +237,37 @@ def ift_image(uv, vis, fov, npix=256, mem_budget_mb=256):
     acc = np.zeros(npix2, dtype=np.complex128)
     N = uv.shape[0]
     for s in range(0, N, chunk):
-        u = uv[s:s + chunk, 0][:, None]
-        v = uv[s:s + chunk, 1][:, None]
-        V = vis[s:s + chunk][:, None]
+        u = uv[s : s + chunk, 0][:, None]
+        v = uv[s : s + chunk, 1][:, None]
+        V = vis[s : s + chunk][:, None]
         phase = np.exp(2j * np.pi * (u * flat_row + v * flat_col))
         acc += (V * phase).sum(axis=0)
 
     img = np.real(acc).reshape(npix, npix)
     crop_span_uas = fov * RAD2UAS
-    meta = {"method": "IFT", "npix": npix, "chunk": chunk,
-            "pixel_scale_uas": fov * RAD2UAS / npix}
+    meta = {
+        "method": "IFT",
+        "npix": npix,
+        "chunk": chunk,
+        "pixel_scale_uas": fov * RAD2UAS / npix,
+    }
     return img, crop_span_uas, meta
+
 
 # ==========================================================================
 # from uvgrid.py
 # ==========================================================================
 
-def filter_events(energies_j, positions, baseline_indices, roll,
-                  energy_kev=None, baseline_bounds=None, baseline_ids=None):
+
+def filter_events(
+    energies_j,
+    positions,
+    baseline_indices,
+    roll,
+    energy_kev=None,
+    baseline_bounds=None,
+    baseline_ids=None,
+):
     """Boolean mask + filtered views for an energy band and a baseline subset.
 
     ``baseline_bounds=(lo, hi)`` keeps a contiguous *inclusive range* of
@@ -235,12 +279,12 @@ def filter_events(energies_j, positions, baseline_indices, roll,
         e_kev = energies_j / KEV
         mask &= (e_kev > energy_kev[0]) & (e_kev < energy_kev[1])
     if baseline_bounds is not None:
-        mask &= (baseline_indices >= baseline_bounds[0]) & \
-                (baseline_indices <= baseline_bounds[1])
+        mask &= (baseline_indices >= baseline_bounds[0]) & (
+            baseline_indices <= baseline_bounds[1]
+        )
     if baseline_ids is not None:
         mask &= np.isin(baseline_indices, np.asarray(baseline_ids, int))
-    return (mask, energies_j[mask], positions[mask],
-            baseline_indices[mask], roll[mask])
+    return (mask, energies_j[mask], positions[mask], baseline_indices[mask], roll[mask])
 
 
 def make_fringe_taper(spec):
@@ -261,7 +305,7 @@ def make_fringe_taper(spec):
     if callable(spec):
         return spec
     n_cut = float(spec)
-    return lambda N: np.exp(-(N / n_cut) ** 2)
+    return lambda N: np.exp(-((N / n_cut) ** 2))
 
 
 def coherence_envelope(N, R):
@@ -270,7 +314,7 @@ def coherence_envelope(N, R):
     N is the fringe order; R = E / sigma_E is the detector resolving power. This
     is how much the finite energy resolution attenuates a fringe's visibility.
     """
-    return np.exp(-2 * np.pi ** 2 * np.asarray(N, float) ** 2 / R ** 2)
+    return np.exp(-2 * np.pi**2 * np.asarray(N, float) ** 2 / R**2)
 
 
 def resolving_power(rmf, energy_kev=6.0):
@@ -313,9 +357,17 @@ def resolving_power(rmf, energy_kev=6.0):
     return float(emid[i] / sigma)
 
 
-def compute_uv(energies_j, positions, baseline_indices, roll, baselines,
-               fringe_taper=None, coherence_R=None, boresight=None,
-               verbose=False):
+def compute_uv(
+    energies_j,
+    positions,
+    baseline_indices,
+    roll,
+    baselines,
+    fringe_taper=None,
+    coherence_R=None,
+    boresight=None,
+    verbose=False,
+):
     """Compute uv-coordinates [wavelengths] and complex visibilities.
 
     Parameters
@@ -327,7 +379,7 @@ def compute_uv(energies_j, positions, baseline_indices, roll, baselines,
     baselines : list[Baseline]
     boresight : (N, 2) ndarray, optional
         Per-event boresight ``(pitch, yaw)`` [rad] **relative to the phase
-        centre** ``c`` — i.e. ``P - c``, where ``P`` is the *known or estimated*
+        center** ``c`` — i.e. ``P - c``, where ``P`` is the *known or estimated*
         attitude at the photon's arrival time (see
         :meth:`xrisalis.io.EventList.boresight_per_event`). Callers normally
         get this from :func:`reconstruct`, which subtracts ``c`` itself.
@@ -393,11 +445,10 @@ def compute_uv(energies_j, positions, baseline_indices, roll, baselines,
         pairs = np.array([u, v]).T
 
         # positive and negative (conjugate) frequencies interleaved
-        uv_blocks.append(
-            np.column_stack((pairs, -pairs)).reshape(-1, pairs.shape[1]))
+        uv_blocks.append(np.column_stack((pairs, -pairs)).reshape(-1, pairs.shape[1]))
 
         fval = np.exp(-2j * np.pi * fourier_freq * positions[sel])
-        N = np.abs(positions[sel] * fourier_freq)   # fringe order per photon
+        N = np.abs(positions[sel] * fourier_freq)  # fringe order per photon
 
         # attitude (boresight) phase referencing: undo the translation the
         # spacecraft's own pointing imprinted on this photon's fringe phase.
@@ -422,22 +473,21 @@ def compute_uv(energies_j, positions, baseline_indices, roll, baselines,
         if verbose:
             print(f"  baseline {int(k) + 1}: {sel.sum()} events")
 
-    uv = (np.concatenate(uv_blocks) if uv_blocks
-          else np.zeros((0, 2))).reshape(-1, 2)
-    vis = (np.concatenate(vis_blocks) if vis_blocks
-           else np.array([], dtype=complex))
+    uv = (np.concatenate(uv_blocks) if uv_blocks else np.zeros((0, 2))).reshape(-1, 2)
+    vis = np.concatenate(vis_blocks) if vis_blocks else np.array([], dtype=complex)
     if coherence_R is not None:
-        coh = (np.concatenate(coh_blocks) if coh_blocks
-               else np.array([], dtype=float))
+        coh = np.concatenate(coh_blocks) if coh_blocks else np.array([], dtype=float)
         return uv, vis, coh
     return uv, vis
+
 
 # ==========================================================================
 # from reconstruct.py
 # ==========================================================================
 
+
 def _resolve_phase_center(events, phase_center=None):
-    """Phase centre ``(pitch, yaw)`` [rad] for an EventList.
+    """Phase center ``(pitch, yaw)`` [rad] for an EventList.
 
     ``None`` (default) is the observation's mean recorded pointing
     (:meth:`~xrisalis.io.EventList.mean_boresight`). Otherwise a sky position
@@ -460,38 +510,49 @@ def _resolve_phase_center(events, phase_center=None):
 
 
 def _boresight_offsets(events, stream, correct_boresight, phase_center):
-    """Per-event boresight relative to the phase centre, and the centre itself.
+    """Per-event boresight relative to the phase center, and the center itself.
 
-    Returns ``(offsets, centre)``: ``offsets`` is the ``(N, 2)`` array
+    Returns ``(offsets, center)``: ``offsets`` is the ``(N, 2)`` array
     ``P - c`` [rad] to hand to :func:`compute_uv` (``None`` when there is
-    nothing to correct), ``centre`` the phase centre ``c`` as
+    nothing to correct), ``center`` the phase center ``c`` as
     ``(pitch, yaw)`` [rad].
 
-    The centre is resolved from the *recorded* pointing, never from the
+    The center is resolved from the *recorded* pointing, never from the
     attitude estimate in ``stream``: a constant bias in the estimate must show
     up as an image shift, as it would in real data, rather than cancel out.
     """
-    centre = _resolve_phase_center(events, phase_center)
+    center = _resolve_phase_center(events, phase_center)
     if not correct_boresight:
-        return None, centre
-    off = events.boresight_per_event(stream) - centre
+        return None, center
+    off = events.boresight_per_event(stream) - center
     if not np.any(off):
-        return None, centre               # fixed stare on the phase centre
-    return off, centre
+        return None, center               # fixed stare on the phase centre
+    return off, center
 
 
-def _phase_center_deg(centre, events):
+def _phase_center_deg(center, events):
     """``(pitch, yaw)`` [rad] -> ``(ra_deg, dec_deg)`` for metadata."""
-    ra, dec = tangent_to_sky(centre[1], centre[0], events.ra_pnt, events.dec_pnt)
+    ra, dec = tangent_to_sky(center[1], center[0], events.ra_pnt, events.dec_pnt)
     return float(ra), float(dec)
 
 
-def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
-                energy_kev=None, baseline_bounds=None, baseline_ids=None,
-                samples=(256, 256), npix=256, fringe_taper=None,
-                deconvolve=None, deconv_epsilon=0.5,
-                use_true_energy=False, attitude=None, correct_boresight=True,
-                phase_center=None, verbose=False):
+def reconstruct(events, 
+                instrument, 
+                method="IFFT", 
+                fov_arcsec=None,
+                energy_kev=None, 
+                baseline_bounds=None, 
+                baseline_ids=None,
+                samples=(256, 256), 
+                npix=256, 
+                fringe_taper=None,
+                deconvolve=None, 
+                deconv_epsilon=0.5,
+                use_true_energy=False, 
+                attitude=None, 
+                correct_boresight=True,
+                phase_center=None, 
+                verbose=False):
     """Reconstruct an image from an EventList.
 
     Parameters
@@ -516,14 +577,17 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
         removes the smear of a drifting or jittering boresight. Set False to
         see the raw, uncorrected image, in which the source sits at its
         position *relative to the boresight*. For a fixed stare at the phase
-        centre (the default for any constant pointing) the two are identical.
+        center (the default for any constant pointing) the two are identical.
     phase_center : optional
-        The sky position the image is centred on, as ``(ra_deg, dec_deg)``
+        The sky position the image is centered on, as ``(ra_deg, dec_deg)``
         (bare numbers are degrees; Quantities and a SkyCoord are accepted).
+        Image axes are true tangent-plane offsets from it (East along the
+        columns' ``alpha``, North along the rows' ``delta``), so RA offsets
+        include their ``cos(dec)``.
         Default None: the observation's mean recorded pointing
         (:meth:`~xrisalis.io.EventList.mean_boresight`), so the image is
-        centred where the telescope looked and a source at offset ``dL`` from
-        it appears at ``dL``. Pass the target's coordinates to centre on the
+        centered where the telescope looked and a source at offset ``dL`` from
+        it appears at ``dL``. Pass the target's coordinates to center on the
         target instead — e.g. to undo a deliberate or erroneous *static*
         pointing offset, which the data alone cannot distinguish from an
         intended one. Must lie within a few fields of the pointing.
@@ -552,11 +616,11 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
         ``R = E/sigma_E`` (see :func:`resolving_power`). Turns on the gridded
         matched-filter Wiener deconvolution (see :func:`ifft_image`), which
         weights each binned photon by its own chromatic coherence ``D(N)`` and
-        normalises per uv-cell — undoing chromatic decoherence in the visibility
+        normalizes per uv-cell — undoing chromatic decoherence in the visibility
         domain without amplifying individual decohered photons. Supersedes
         ``fringe_taper`` (ignored when set). Ignored for method='IFT'.
     deconv_epsilon : float
-        Wiener regularisation for ``deconvolve`` (fraction of the peak per-cell
+        Wiener regularization for ``deconvolve`` (fraction of the peak per-cell
         sum D^2). Larger = closer to an optimal taper (cleaner); smaller =
         more aggressive deconvolution (noisier). Default 0.5.
     use_true_energy : bool
@@ -572,10 +636,11 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
     meta : dict
     """
     _fov_derived = fov_arcsec is None
-    fov_arcsec = _resolve_fov_arcsec(fov_arcsec, events, instrument, energy_kev,
-                                     baseline_bounds, baseline_ids)
+    fov_arcsec = _resolve_fov_arcsec(
+        fov_arcsec, events, instrument, energy_kev, baseline_bounds, baseline_ids
+    )
     fov = to_arcsec(fov_arcsec) * ARCSEC2RAD
-    if energy_kev is not None:                       # accept keV or Quantities
+    if energy_kev is not None:  # accept keV or Quantities
         energy_kev = (float(to_kev(energy_kev[0])), float(to_kev(energy_kev[1])))
     if use_true_energy:
         if events.true_energy_j is None:
@@ -585,14 +650,17 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
         energies_j = events.energy_j
     stream = events.attitude_stream(attitude)
     roll = events.roll_per_event_from(stream)
-    bore, centre = _boresight_offsets(events, stream, correct_boresight,
-                                      phase_center)
+    bore, center = _boresight_offsets(events, stream, correct_boresight, phase_center)
 
-    mask, e, p, b, r = filter_events(energies_j, events.dety,
-                                     events.baseline_id,
-                                     roll, energy_kev=energy_kev,
-                                     baseline_bounds=baseline_bounds,
-                                     baseline_ids=baseline_ids)
+    mask, e, p, b, r = filter_events(
+        energies_j,
+        events.dety,
+        events.baseline_id,
+        roll,
+        energy_kev=energy_kev,
+        baseline_bounds=baseline_bounds,
+        baseline_ids=baseline_ids,
+    )
     bore = None if bore is None else bore[mask]
     if e.size == 0:
         raise ValueError("No events left after filtering.")
@@ -603,29 +671,53 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
     if _fov_derived:
         _n = int(np.max(samples)) if method.upper() == "IFFT" else int(npix)
         _maxD = max(instrument.baselines[int(k)].D for k in np.unique(b))
-        fov = _grid_safe_fov_arcsec(fov * RAD2ARCSEC, e.max() / KEV, _maxD, _n) \
+        fov = (
+            _grid_safe_fov_arcsec(fov * RAD2ARCSEC, e.max() / KEV, _maxD, _n)
             * ARCSEC2RAD
+        )
 
     deconvolving = deconvolve is not None and method.upper() == "IFFT"
     if deconvolve is not None and method.upper() != "IFFT":
         raise ValueError("deconvolve is only supported for method='IFFT'.")
 
     if deconvolving:
-        uv, vis, coh = compute_uv(e, p, b, r, instrument.baselines,
-                                  fringe_taper=fringe_taper, boresight=bore,
-                                  coherence_R=float(deconvolve), verbose=verbose)
+        uv, vis, coh = compute_uv(
+            e,
+            p,
+            b,
+            r,
+            instrument.baselines,
+            fringe_taper=fringe_taper,
+            boresight=bore,
+            coherence_R=float(deconvolve),
+            verbose=verbose,
+        )
     else:
-        uv, vis = compute_uv(e, p, b, r, instrument.baselines,
-                             fringe_taper=fringe_taper, boresight=bore,
-                             verbose=verbose)
+        uv, vis = compute_uv(
+            e,
+            p,
+            b,
+            r,
+            instrument.baselines,
+            fringe_taper=fringe_taper,
+            boresight=bore,
+            verbose=verbose,
+        )
         coh = None
 
     if method.upper() == "IFFT":
         min_D = min(instrument.baselines[int(k)].D for k in np.unique(b))
-        img, span, meta = ifft_image(uv, vis, fov, e, min_D, samples=samples,
-                                     coherence=coh,
-                                     deconv_epsilon=deconv_epsilon,
-                                     verbose=verbose)
+        img, span, meta = ifft_image(
+            uv,
+            vis,
+            fov,
+            e,
+            min_D,
+            samples=samples,
+            coherence=coh,
+            deconv_epsilon=deconv_epsilon,
+            verbose=verbose,
+        )
     elif method.upper() == "IFT":
         img, span, meta = ift_image(uv, vis, fov, npix=npix)
     else:
@@ -633,12 +725,12 @@ def reconstruct(events, instrument, method="IFFT", fov_arcsec=None,
 
     meta["n_events"] = int(e.size)
     meta["deconvolved"] = bool(deconvolving)
-    meta["phase_center_deg"] = _phase_center_deg(centre, events)
+    meta["phase_center_deg"] = _phase_center_deg(center, events)
     return img, span, uv, meta
 
 
 def _pad_to(img, shape):
-    """Centre-pad a 2-D image with zeros to ``shape`` (same pixel scale)."""
+    """Center-pad a 2-D image with zeros to ``shape`` (same pixel scale)."""
     out = np.zeros(shape, dtype=img.dtype)
     r0 = (shape[0] - img.shape[0]) // 2
     c0 = (shape[1] - img.shape[1]) // 2
@@ -649,13 +741,24 @@ def _pad_to(img, shape):
     return out
 
 
-def reconstruct_subbands(events, instrument, bands, method="IFFT",
-                         fov_arcsec=None, baseline_bounds=None,
-                         baseline_ids=None,
-                         samples=(256, 256), npix=256, fringe_taper=None,
-                         combine="sum", normalize_bands=False,
-                         attitude=None, correct_boresight=True,
-                         phase_center=None, verbose=False):
+def reconstruct_subbands(
+    events,
+    instrument,
+    bands,
+    method="IFFT",
+    fov_arcsec=None,
+    baseline_bounds=None,
+    baseline_ids=None,
+    samples=(256, 256),
+    npix=256,
+    fringe_taper=None,
+    combine="sum",
+    normalize_bands=False,
+    attitude=None,
+    correct_boresight=True,
+    phase_center=None,
+    verbose=False,
+):
     """Recovery **option 3**: energy sub-band (multi-frequency) synthesis.
 
     Reconstructs each detected-energy band separately and combines the images on
@@ -668,10 +771,10 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
     ----------
     bands : list[(e_lo, e_hi)]      detected-energy bands [keV].
     combine : {'sum', 'mean'}        how to combine the per-band images.
-    normalize_bands : bool           peak-normalise each band before combining.
+    normalize_bands : bool           peak-normalize each band before combining.
     attitude, correct_boresight, phase_center
-        As for :func:`reconstruct`. The default phase centre is taken from the
-        whole event list, so every band is centred on the same sky point.
+        As for :func:`reconstruct`. The default phase center is taken from the
+        whole event list, so every band is centered on the same sky point.
 
     Returns
     -------
@@ -686,10 +789,15 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
     _fov_derived = fov_arcsec is None
     _band_lo = min(float(b[0]) for b in bands)
     _band_hi = max(float(b[1]) for b in bands)
-    fov_arcsec = _resolve_fov_arcsec(fov_arcsec, events, instrument,
-                                     (_band_lo, _band_hi), baseline_bounds,
-                                     baseline_ids)
-    if _fov_derived:            # cap to grid-safe; explicit FoV passes through
+    fov_arcsec = _resolve_fov_arcsec(
+        fov_arcsec,
+        events,
+        instrument,
+        (_band_lo, _band_hi),
+        baseline_bounds,
+        baseline_ids,
+    )
+    if _fov_derived:  # cap to grid-safe; explicit FoV passes through
         _e_kev = events.energy_kev
         _max_e = float(min(_band_hi, _e_kev.max())) if _e_kev.size else _band_hi
         _maxD = float(np.max(instrument.baseline_lengths))
@@ -697,15 +805,24 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
         fov_arcsec = _grid_safe_fov_arcsec(fov_arcsec, _max_e, _maxD, _n)
     target = tuple(samples) if method.upper() == "IFFT" else (npix, npix)
     band_images, spans, counts = [], [], []
-    for (e_lo, e_hi) in bands:
+    for e_lo, e_hi in bands:
         try:
             img, span, _, m = reconstruct(
-                events, instrument, method=method, fov_arcsec=fov_arcsec,
-                energy_kev=(e_lo, e_hi), baseline_bounds=baseline_bounds,
+                events,
+                instrument,
+                method=method,
+                fov_arcsec=fov_arcsec,
+                energy_kev=(e_lo, e_hi),
+                baseline_bounds=baseline_bounds,
                 baseline_ids=baseline_ids,
-                samples=samples, npix=npix, fringe_taper=fringe_taper,
-                attitude=attitude, correct_boresight=correct_boresight,
-                phase_center=phase_center, verbose=verbose)
+                samples=samples,
+                npix=npix,
+                fringe_taper=fringe_taper,
+                attitude=attitude,
+                correct_boresight=correct_boresight,
+                phase_center=phase_center,
+                verbose=verbose,
+            )
         except ValueError:
             img = np.zeros(target)
             span = fov_arcsec * 1e6
@@ -726,25 +843,30 @@ def reconstruct_subbands(events, instrument, bands, method="IFFT",
     # zero-padded to ``target``, and band 0's own crop can be smaller than that
     # (its internal grid n depends on wavelength, the pixel scale d does not).
     fov_uas = fov_arcsec * ARCSEC2RAD * RAD2UAS
-    span_uas = (fov_uas if method.upper() == "IFT"
-                else target[0] * fov_uas / np.max(samples))
-    meta = {"bands": list(bands), "counts": counts, "method": method.upper(),
-            "combine": combine, "band_spans_uas": spans,
+    span_uas = (
+      fov_uas if method.upper() == "IFT" else target[0] * fov_uas / np.max(samples)
+    )
+    meta = {"bands": list(bands), 
+            "counts": counts, 
+            "method": method.upper(),
+            "combine": combine, 
+            "band_spans_uas": spans,
             "pixel_scale_uas": span_uas / target[0],
             "phase_center_deg": _phase_center_deg(
-                _resolve_phase_center(events, phase_center), events)}
+                _resolve_phase_center(events, phase_center), events)
+           }
     return combined, span_uas, band_images, meta
 
 
 # ==========================================================================
-# Section 4: false-colour (RGB) reconstruction
+# Section 4: false-color (RGB) reconstruction
 # ==========================================================================
 
-def dirty_beam(uv, vis, fov, energies_j, min_baseline_D, samples=(256, 256),
-               **kw):
+
+def dirty_beam(uv, vis, fov, energies_j, min_baseline_D, samples=(256, 256), **kw):
     """The dirty beam (point-source response) belonging to a uv-sampling.
 
-    A point source at the phase centre has unimodular visibilities, so the beam
+    A point source at the phase center has unimodular visibilities, so the beam
     of a *weighted* reconstruction is the transform of the weights alone — and
     ``|vis|`` is exactly the per-sample weight :func:`compute_uv` applied (the
     fringe taper, or 1 with no taper).  Passing the same ``uv``, ``fov``,
@@ -754,8 +876,15 @@ def dirty_beam(uv, vis, fov, energies_j, min_baseline_D, samples=(256, 256),
 
     Returns ``(beam, span_uas, meta)`` — the same contract as :func:`ifft_image`.
     """
-    return ifft_image(uv, np.abs(vis).astype(complex), fov, energies_j,
-                      min_baseline_D, samples=samples, **kw)
+    return ifft_image(
+        uv,
+        np.abs(vis).astype(complex),
+        fov,
+        energies_j,
+        min_baseline_D,
+        samples=samples,
+        **kw,
+    )
 
 
 def beam_sigma_uas(beam, pixel_scale_uas):
@@ -767,7 +896,7 @@ def beam_sigma_uas(beam, pixel_scale_uas):
     the sidelobe structure of a dirty beam makes unstable.
 
     The half-maximum crossing is interpolated linearly between the two
-    bracketing radius bins.  Without that the answer is quantised to whole
+    bracketing radius bins.  Without that the answer is quantized to whole
     pixels, and on a coarse grid two genuinely different beams can measure
     identical — whereupon the beam matching they feed silently does nothing.
     """
@@ -777,7 +906,7 @@ def beam_sigma_uas(beam, pixel_scale_uas):
         return float("nan")
     b = b / peak
     cy, cx = np.unravel_index(int(np.argmax(b)), b.shape)
-    yy, xx = np.mgrid[0:b.shape[0], 0:b.shape[1]]
+    yy, xx = np.mgrid[0 : b.shape[0], 0 : b.shape[1]]
     rr = np.hypot(yy - cy, xx - cx)
     nb = int(min(b.shape) // 2)
     # A bin covers radii [k, k+1) but holds more pixels at its outer edge, so
@@ -789,40 +918,43 @@ def beam_sigma_uas(beam, pixel_scale_uas):
     if not below.size:
         r_half = float(nb)
     elif below[0] == 0:
-        r_half = float(prof_r[0])         # unresolved: narrower than one pixel
+        r_half = float(prof_r[0])  # unresolved: narrower than one pixel
     else:
         k = int(below[0])
         y0, y1 = prof[k - 1], prof[k]
         frac = (y0 - 0.5) / (y0 - y1) if y0 > y1 else 0.0
-        r_half = float(prof_r[k - 1] +
-                       np.clip(frac, 0.0, 1.0) * (prof_r[k] - prof_r[k - 1]))
+        r_half = float(
+            prof_r[k - 1] + np.clip(frac, 0.0, 1.0) * (prof_r[k] - prof_r[k - 1])
+        )
     return float(r_half / np.sqrt(2 * np.log(2)) * pixel_scale_uas)
 
 
-def match_resolution(images, sigmas_uas, pixel_scale_uas,
-                     target_sigma_uas=None):
+def match_resolution(images, sigmas_uas, pixel_scale_uas, target_sigma_uas=None):
     """Convolve images down to a common (the coarsest) resolution.
 
     Bands imaged with the same array still have *different* beams, because the
     uv-sampling scales with wavelength and the effective area is energy
-    dependent.  Compositing them raw paints an instrumental colour gradient
-    onto every source — a coloured core inside a differently coloured halo —
+    dependent.  Compositing them raw paints an instrumental color gradient
+    onto every source — a colored core inside a differently colored halo —
     which is indistinguishable, by eye, from a real spectral gradient.  Blurring
     each image by ``sqrt(sigma_ref^2 - sigma^2)`` puts them all on the coarsest
-    beam, after which colour is spectral shape.
+    beam, after which color is spectral shape.
 
     Returns ``(images, sigma_ref_uas)``.
     """
-    from scipy.ndimage import gaussian_filter               # lazy import
+    from scipy.ndimage import gaussian_filter  # lazy import
+
     sig = np.asarray(sigmas_uas, float)
-    s_ref = float(np.nanmax(sig) if target_sigma_uas is None
-                  else target_sigma_uas)
+    s_ref = float(np.nanmax(sig) if target_sigma_uas is None else target_sigma_uas)
     out = []
     for img, s in zip(images, sig):
         img = np.asarray(img, float)
-        extra = np.sqrt(max(s_ref ** 2 - float(s) ** 2, 0.0)) / pixel_scale_uas
-        out.append(gaussian_filter(img, extra, mode="constant")
-                   if np.isfinite(extra) and extra > 0.05 else img)
+        extra = np.sqrt(max(s_ref**2 - float(s) ** 2, 0.0)) / pixel_scale_uas
+        out.append(
+            gaussian_filter(img, extra, mode="constant")
+            if np.isfinite(extra) and extra > 0.05
+            else img
+        )
     return out, s_ref
 
 
@@ -851,26 +983,28 @@ class RGBImage:
     :mod:`xrisalis.viz`; :meth:`rgb` and :meth:`plot` are shortcuts to it.
     """
 
-    channels: list                    # 3 images (R, G, B), common grid
-    span_uas: float                   # angular span of that grid
+    channels: list  # 3 images (R, G, B), common grid
+    span_uas: float  # angular span of that grid
     pixel_scale_uas: float
-    bands: list                       # 3 (e_lo, e_hi) in keV
-    counts: list                      # events per band
-    beams: list = field(default_factory=list)          # 3 dirty beams, or []
+    bands: list  # 3 (e_lo, e_hi) in keV
+    counts: list  # events per band
+    beams: list = field(default_factory=list)  # 3 dirty beams, or []
     beam_sigmas_uas: list = field(default_factory=list)
-    matched_sigma_uas: float = None   # None if the beams were not matched
-    channels_raw: list = field(default_factory=list)   # before beam matching
+    matched_sigma_uas: float = None  # None if the beams were not matched
+    channels_raw: list = field(default_factory=list)  # before beam matching
     meta: dict = field(default_factory=dict)
 
     # -- display shortcuts (implemented in viz) ------------------------------
     def rgb(self, **kw):
         """Composite to an ``(ny, nx, 3)`` array — see :func:`viz.rgb_composite`."""
         from .viz import rgb_composite
+
         return rgb_composite(self, **kw)
 
     def plot(self, **kw):
         """Plot the composite — see :func:`viz.plot_rgb`."""
         from .viz import plot_rgb
+
         return plot_rgb(self, **kw)
 
     # -- FITS ----------------------------------------------------------------
@@ -884,6 +1018,7 @@ class RGBImage:
         """
         from astropy.io import fits
         from .io import write_hdulist
+
         hdus = []
         for i, name in enumerate("RGB"):
             lo, hi = self.bands[i]
@@ -892,12 +1027,16 @@ class RGBImage:
             h["BAND_LO"] = (float(lo), "band lower edge [keV]")
             h["BAND_HI"] = (float(hi), "band upper edge [keV]")
             h["NEVENTS"] = (int(self.counts[i]), "events in this band")
-            if i < len(self.beam_sigmas_uas):
-                h["BEAMSIG"] = (float(self.beam_sigmas_uas[i]),
-                                "dirty-beam sigma [uas]")
+            if i < len(self.beam_sigmas_uas) and np.isfinite(self.beam_sigmas_uas[i]):
+                h["BEAMSIG"] = (
+                    float(self.beam_sigmas_uas[i]),
+                    "dirty-beam sigma [uas]",
+                )
             if self.matched_sigma_uas is not None:
-                h["MATCHSIG"] = (float(self.matched_sigma_uas),
-                                 "common beam sigma after matching [uas]")
+                h["MATCHSIG"] = (
+                    float(self.matched_sigma_uas),
+                    "common beam sigma after matching [uas]",
+                )
             h["SPANUAS"] = (float(self.span_uas), "image span [uas]")
             h["PIXUAS"] = (float(self.pixel_scale_uas), "pixel scale [uas]")
             for k, v in (self.meta or {}).items():
@@ -907,19 +1046,23 @@ class RGBImage:
             deg = self.pixel_scale_uas / 3.6e9
             h["CTYPE1"], h["CTYPE2"] = "RA---SIN", "DEC--SIN"
             h["CUNIT1"], h["CUNIT2"] = "deg", "deg"
-            h["CRPIX1"], h["CRPIX2"] = nx / 2 + 0.5, ny / 2 + 0.5
-            h["CRVAL1"], h["CRVAL2"] = 0.0, 0.0
-            h["CDELT1"], h["CDELT2"] = -deg, deg
-            hdus.append(fits.ImageHDU(np.asarray(self.channels[i], np.float32),
-                                      header=h))
+            # phase center at pixel (n//2, n//2); columns run East, rows North
+            h["CRPIX1"], h["CRPIX2"] = nx // 2 + 1, ny // 2 + 1
+            pc = (self.meta or {}).get("phase_center_deg") or (0.0, 0.0)
+            h["CRVAL1"], h["CRVAL2"] = float(pc[0]), float(pc[1])
+            h["CDELT1"], h["CDELT2"] = deg, deg
+            hdus.append(
+                fits.ImageHDU(np.asarray(self.channels[i], np.float32), header=h)
+            )
         if beams and self.beams:
             for i, name in enumerate("RGB"):
                 if self.beams[i] is None:
                     continue
                 bh = fits.Header()
                 bh["EXTNAME"] = f"BEAM_{name}"
-                hdus.append(fits.ImageHDU(
-                    np.asarray(self.beams[i], np.float32), header=bh))
+                hdus.append(
+                    fits.ImageHDU(np.asarray(self.beams[i], np.float32), header=bh)
+                )
         write_hdulist(hdus, path, overwrite=overwrite)
         return path
 
@@ -927,6 +1070,7 @@ class RGBImage:
     def read(cls, path):
         """Read back a file written by :meth:`write`."""
         from astropy.io import fits
+
         with fits.open(path) as hdul:
             ch, bands, counts, sig, beams = [], [], [], [], []
             for name in "RGB":
@@ -936,26 +1080,41 @@ class RGBImage:
                 counts.append(int(hdu.header.get("NEVENTS", 0)))
                 sig.append(float(hdu.header.get("BEAMSIG", np.nan)))
                 key = f"BEAM_{name}"
-                beams.append(np.asarray(hdul[key].data, float)
-                             if key in hdul else None)
+                beams.append(np.asarray(hdul[key].data, float) if key in hdul else None)
             h0 = hdul["R"].header
-            return cls(channels=ch, span_uas=float(h0["SPANUAS"]),
-                       pixel_scale_uas=float(h0["PIXUAS"]), bands=bands,
-                       counts=counts, beams=beams, beam_sigmas_uas=sig,
-                       matched_sigma_uas=(float(h0["MATCHSIG"])
-                                          if "MATCHSIG" in h0 else None),
-                       meta={"source": str(path)})
+            return cls(
+                channels=ch,
+                span_uas=float(h0["SPANUAS"]),
+                pixel_scale_uas=float(h0["PIXUAS"]),
+                bands=bands,
+                counts=counts,
+                beams=beams,
+                beam_sigmas_uas=sig,
+                matched_sigma_uas=(float(h0["MATCHSIG"]) if "MATCHSIG" in h0 else None),
+                meta={"source": str(path)},
+            )
 
 
-def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
-                    baseline_bounds=None, fov_arcsec=None,
-                    samples=(256, 256), fringe_taper=None, match_beams=True,
-                    with_beams=True, use_true_energy=False,
-                    attitude=None, correct_boresight=True,
-                    phase_center=None, verbose=False):
-    """Reconstruct three energy bands onto a common grid for a colour image.
+def reconstruct_rgb(
+    events,
+    instrument,
+    bands,
+    baseline_ids=None,
+    baseline_bounds=None,
+    fov_arcsec=None,
+    samples=(256, 256),
+    fringe_taper=None,
+    match_beams=True,
+    with_beams=True,
+    use_true_energy=False,
+    attitude=None,
+    correct_boresight=True,
+    phase_center=None,
+    verbose=False,
+):
+    """Reconstruct three energy bands onto a common grid for a color image.
 
-    The interferometric version of the familiar false-colour composite: one
+    The interferometric version of the familiar false-color composite: one
     reconstruction per detected-energy band, mapped to red, green and blue, so
     that hue carries spectral shape while brightness carries flux.
 
@@ -996,7 +1155,7 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
     with_beams : bool           compute the per-band dirty beams at all.
     use_true_energy : bool      diagnostic; reconstruct with TRUE_ENERGY.
     attitude, correct_boresight, phase_center
-        As for :func:`reconstruct`; one phase centre for all three channels.
+        As for :func:`reconstruct`; one phase center for all three channels.
 
     Returns
     -------
@@ -1012,19 +1171,22 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
     """
     bands = [tuple(b) for b in bands]
     if len(bands) != 3:
-        raise ValueError(f"reconstruct_rgb needs exactly three bands "
-                         f"(R, G, B); got {len(bands)}.")
+        raise ValueError(
+            f"reconstruct_rgb needs exactly three bands (R, G, B); got {len(bands)}."
+        )
     _fov_derived = fov_arcsec is None
     _band_lo = min(float(b[0]) for b in bands)
     _band_hi = max(float(b[1]) for b in bands)
-    fov_arcsec = _resolve_fov_arcsec(fov_arcsec, events, instrument,
-                                     (_band_lo, _band_hi))
-    if _fov_derived:            # cap to grid-safe (finest fringe); explicit left as-is
+    fov_arcsec = _resolve_fov_arcsec(
+        fov_arcsec, events, instrument, (_band_lo, _band_hi)
+    )
+    if _fov_derived:  # cap to grid-safe (finest fringe); explicit left as-is
         _e_kev = events.energy_kev
         _max_e = float(min(_band_hi, _e_kev.max())) if _e_kev.size else _band_hi
         _maxD = float(np.max(instrument.baseline_lengths))
-        fov_arcsec = _grid_safe_fov_arcsec(fov_arcsec, _max_e, _maxD,
-                                           int(np.max(samples)))
+        fov_arcsec = _grid_safe_fov_arcsec(
+            fov_arcsec, _max_e, _maxD, int(np.max(samples))
+        )
     fov = fov_arcsec * ARCSEC2RAD
     target = tuple(samples)
 
@@ -1036,8 +1198,9 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
         energies_j = events.energy_j
     _stream = events.attitude_stream(attitude)
     roll = events.roll_per_event_from(_stream)
-    _bore, _centre = _boresight_offsets(events, _stream, correct_boresight,
-                                        phase_center)
+    _bore, _center = _boresight_offsets(
+        events, _stream, correct_boresight, phase_center
+    )
 
     ids_per = _per_channel(baseline_ids)
     bounds_per = _per_channel(baseline_bounds)
@@ -1048,11 +1211,15 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
     channels, beams, counts, sigmas, used = [], [], [], [], []
     for (lo, hi), ids, bounds in zip(bands, ids_per, bounds_per):
         lo, hi = float(to_kev(lo)), float(to_kev(hi))
-        _m, e, p, b, r = filter_events(energies_j, events.dety,
-                                       events.baseline_id, roll,
-                                       energy_kev=(lo, hi),
-                                       baseline_bounds=bounds,
-                                       baseline_ids=ids)
+        _m, e, p, b, r = filter_events(
+            energies_j,
+            events.dety,
+            events.baseline_id,
+            roll,
+            energy_kev=(lo, hi),
+            baseline_bounds=bounds,
+            baseline_ids=ids,
+        )
         bore = None if _bore is None else _bore[_m]
         if e.size == 0:
             channels.append(np.zeros(target))
@@ -1064,8 +1231,9 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
                 print(f"  band {lo}-{hi} keV: NO EVENTS")
             continue
 
-        uv, vis = compute_uv(e, p, b, r, instrument.baselines,
-                             fringe_taper=fringe_taper, boresight=bore)
+        uv, vis = compute_uv(
+            e, p, b, r, instrument.baselines, fringe_taper=fringe_taper, boresight=bore
+        )
         keys = np.unique(b)
         min_D = min(instrument.baselines[int(k)].D for k in keys)
         img, _, _ = ifft_image(uv, vis, fov, e, min_D, samples=samples)
@@ -1082,27 +1250,34 @@ def reconstruct_rgb(events, instrument, bands, baseline_ids=None,
             beams.append(None)
             sigmas.append(np.nan)
         if verbose:
-            print(f"  band {lo}-{hi} keV: {counts[-1]} events, "
-                  f"beam sigma {sigmas[-1]:.1f} uas")
+            print(
+                f"  band {lo}-{hi} keV: {counts[-1]} events, "
+                f"beam sigma {sigmas[-1]:.1f} uas"
+            )
 
     raw = [c.copy() for c in channels]
     matched_sigma = None
     if match_beams and with_beams and np.all(np.isfinite(sigmas)):
-        channels, matched_sigma = match_resolution(channels, sigmas,
-                                                   pixel_scale_uas)
+        channels, matched_sigma = match_resolution(channels, sigmas, pixel_scale_uas)
         if verbose:
             print(f"  matched to sigma {matched_sigma:.1f} uas")
     elif match_beams and verbose:
         print("  beams NOT matched (an empty band, or with_beams=False)")
 
-    meta = {"method": "IFFT", "fov_arcsec": float(fov_arcsec),
+    meta = {"method": "IFFT", 
+            "fov_arcsec": float(fov_arcsec),
             "fringe_taper": (fringe_taper if isinstance(fringe_taper,
                                                         (int, float))
                              else str(fringe_taper)),
             "baselines_used": used, "matched": matched_sigma is not None,
             "phase_center_deg": _phase_center_deg(_centre, events)}
-    return RGBImage(channels=channels, span_uas=span_uas,
-                    pixel_scale_uas=pixel_scale_uas, bands=bands,
-                    counts=counts, beams=beams, beam_sigmas_uas=sigmas,
-                    matched_sigma_uas=matched_sigma, channels_raw=raw,
+    return RGBImage(channels=channels, 
+                    span_uas=span_uas,
+                    pixel_scale_uas=pixel_scale_uas, 
+                    bands=bands,
+                    counts=counts, 
+                    beams=beams, 
+                    beam_sigmas_uas=sigmas,
+                    matched_sigma_uas=matched_sigma, 
+                    channels_raw=raw,
                     meta=meta)

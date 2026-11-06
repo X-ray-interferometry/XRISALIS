@@ -12,18 +12,32 @@ from .pointing import as_pointing
 # from baseline.py
 # ==========================================================================
 
+
 class Baseline:
     """A single slatted-mirror baseline of an X-ray interferometer.
 
     Exactly one of the geometry pairs must be supplied so the rest can be
     derived (D<->F, W<->L via beam_angle). Units are SI on the way in except
-    ``W`` which is given in micrometres for convenience and stored in metres.
+    ``W`` which is given in micrometers for convenience and stored in meters.
     """
 
-    def __init__(self, num_pairs, D=None, L=None, W=None, beam_angle=None,
-                 F=None, grazing_angle=None, bench_length=None,
-                 mirr_reflec=None, Wz=1e-2, slat_pitch=None,
-                 combiner="slatted", overlap_width=None, visibility=1.0):
+    def __init__(
+        self,
+        num_pairs,
+        D=None,
+        L=None,
+        W=None,
+        beam_angle=None,
+        F=None,
+        grazing_angle=None,
+        bench_length=None,
+        mirr_reflec=None,
+        Wz=1e-2,
+        slat_pitch=None,
+        combiner="slatted",
+        overlap_width=None,
+        visibility=1.0,
+    ):
         # --- beam angle ---
         if beam_angle is not None:
             self.beam_angle = beam_angle
@@ -31,8 +45,7 @@ class Baseline:
             try:
                 self.beam_angle = W * 1e-6 / L
             except TypeError:
-                raise ValueError(
-                    "Define either beam_angle, or both W (um) and L (m).")
+                raise ValueError("Define either beam_angle, or both W (um) and L (m).")
         # --- baseline length D <-> focal length F ---
         if D is not None:
             self.D = D
@@ -84,15 +97,17 @@ class Baseline:
         if slat_pitch is None:
             slat_pitch = self.W
         if slat_pitch < self.W - 1e-18:
-            raise ValueError("slat_pitch must be >= slat width W (slats cannot "
-                             "overlap); use slat_pitch=W for a contiguous comb.")
+            raise ValueError(
+                "slat_pitch must be >= slat width W (slats cannot "
+                "overlap); use slat_pitch=W for a contiguous comb."
+            )
         self.slat_pitch = slat_pitch
 
         # BEAM COMBINER MODEL (fringe / DETY axis).
         # * 'slatted' (default): the slatted-mirror comb above -- Fresnel
         #   single-slat envelopes x global two-beam fringe (accept-reject in
         #   xrisalis.simulate.sample_detector_positions).
-        # * 'arbitrary': an idealised combiner (e.g. a beamsplitter, as in the
+        # * 'arbitrary': an idealized combiner (e.g. a beamsplitter, as in the
         #   Accretion Explorer Interferometer). Two-beam fringes of period
         #   lambda/beam_angle and contrast ``visibility``, NO diffraction: the
         #   interferogram is a top-hat window of width ``overlap_width`` (the
@@ -102,11 +117,12 @@ class Baseline:
         #   See xrisalis.simulate.sample_arbitrary_positions.
         combiner = str(combiner).lower()
         if combiner not in ("slatted", "arbitrary"):
-            raise ValueError("combiner must be 'slatted' or 'arbitrary', "
-                             f"got {combiner!r}")
+            raise ValueError(
+                f"combiner must be 'slatted' or 'arbitrary', got {combiner!r}"
+            )
         self.combiner = combiner
         if overlap_width is not None and not overlap_width > 0:
-            raise ValueError("overlap_width must be > 0 (metres)")
+            raise ValueError("overlap_width must be > 0 (meters)")
         self.overlap_width = None if overlap_width is None else float(overlap_width)
         if not 0.0 <= float(visibility) <= 1.0:
             raise ValueError("visibility must be in [0, 1]")
@@ -127,8 +143,9 @@ class Baseline:
         ``Wz`` is the mirror z-aperture (cross/DETZ axis), default 1 cm.
         ``slat_pitch`` is the aperture slat pitch (default = W, contiguous comb).
         """
-        return cls(num_pairs=30, D=D, L=10, W=300, bench_length=7, Wz=Wz,
-                   slat_pitch=slat_pitch)
+        return cls(
+            num_pairs=30, D=D, L=10, W=300, bench_length=7, Wz=Wz, slat_pitch=slat_pitch
+        )
 
     @property
     def slat_gap(self):
@@ -168,14 +185,24 @@ class Baseline:
     def __repr__(self):
         extra = ""
         if self.combiner != "slatted":
-            extra = (f", combiner={self.combiner!r}, "
-                     f"overlap={self.overlap_span * 1e3:.4g} mm")
-        return (f"Baseline(D={self.D:.4g} m, L={self.L:.4g} m, "
-                f"W={self.W * 1e6:.4g} um, num_pairs={self.num_pairs}{extra})")
+            extra = (
+                f", combiner={self.combiner!r}, "
+                f"overlap={self.overlap_span * 1e3:.4g} mm"
+            )
+        return (
+            f"Baseline(D={self.D:.4g} m, L={self.L:.4g} m, "
+            f"W={self.W * 1e6:.4g} um, num_pairs={self.num_pairs}{extra})"
+        )
 
     # -- field of view --------------------------------------------------------
-    def field_of_view(self, energy_kev=None, R=None, detector=None,
-                      which="imaging", coherence_factor=1.0):
+    def field_of_view(
+        self,
+        energy_kev=None,
+        R=None,
+        detector=None,
+        which="imaging",
+        coherence_factor=1.0,
+    ):
         """Half-angle field of view [rad] set by this baseline's optics/detector.
 
         Four mechanisms (see docs/fov_from_instrument.md); the FoV is the
@@ -209,9 +236,10 @@ class Baseline:
             :func:`xrisalis.reconstruct.resolving_power`). Needed for coherence.
         detector : Detector, optional
             Caps the illuminated region by the physical extent.
-        which : {'imaging','detection','geometry','coherence','diffraction'}
+        which : {'imaging','detection','geometry','coherence','diffraction','cross'}
             'detection' → geometry only (used for vignetting); 'imaging' (the
-            default / 'auto') → min(geometry, coherence).
+            default / 'auto') → min(geometry, coherence); 'cross' → the
+            non-interferometric (DETZ) axis, half the beam angle ``β/2``.
         coherence_factor : float
             Prefactor on the coherence term.
 
@@ -223,8 +251,11 @@ class Baseline:
         """
         if which == "auto":
             which = "imaging"
-        half = (self.overlap_span if self.combiner == "arbitrary"
-                else self.W * self.num_pairs) / 2.0
+        half = (
+            self.overlap_span
+            if self.combiner == "arbitrary"
+            else self.W * self.num_pairs
+        ) / 2.0
         if detector is not None and detector.fringe_half_extent_m() is not None:
             half = min(half, detector.fringe_half_extent_m())
         denom = self.D / self.beam_angle - self.L
@@ -244,14 +275,17 @@ class Baseline:
             "coherence": fov_coh,
             "diffraction": fov_env,
             "imaging": min(fov_geo, fov_coh),
+            "cross": self.beam_angle / 2.0,
         }
         if which not in table:
             raise ValueError(f"unknown FoV kind {which!r}; use one of {list(table)}")
         return float(table[which])
 
+
 # ==========================================================================
 # from interferometer.py
 # ==========================================================================
+
 
 def smooth_roll(inst, pointing):
     """Continuous roll at constant rate spanning pi over the exposure.
@@ -271,9 +305,17 @@ def no_roll(inst, pointing):
 
 
 class Interferometer:
-    def __init__(self, time_step=1, roller=None, roll_init=0.0,
-                 wobble=None, wobble_sigma=0.0, fov=None, pointing=None,
-                 detector=None):
+    def __init__(
+        self,
+        time_step=1,
+        roller=None,
+        roll_init=0.0,
+        wobble=None,
+        wobble_sigma=0.0,
+        fov=None,
+        pointing=None,
+        detector=None,
+    ):
         self.baselines = []
         self.time_step = time_step
         self.roller = roller
@@ -305,8 +347,9 @@ class Interferometer:
         return self
 
     @classmethod
-    def from_arf(cls, arf, roller=None, fov_arcsec=None, baseline_kwargs=None,
-                 **kwargs):
+    def from_arf(
+        cls, arf, roller=None, fov_arcsec=None, baseline_kwargs=None, **kwargs
+    ):
         """Build an interferometer whose baselines match an ARF's per-baseline
         lengths. ``arf`` is an xrisalis.io.ARF object.
 
@@ -318,8 +361,11 @@ class Interferometer:
             Interferometer.from_arf(arf, baseline_kwargs=dict(
                 num_pairs=1, W=26e3, beam_angle=4.85e-6, combiner="arbitrary"))
         """
-        fov = None if fov_arcsec is None else fov_arcsec * (3.141592653589793 /
-                                                            (180.0 * 3600.0))
+        fov = (
+            None
+            if fov_arcsec is None
+            else fov_arcsec * (3.141592653589793 / (180.0 * 3600.0))
+        )
         inst = cls(roller=roller, fov=fov, **kwargs)
         for D in arf.baseline_lengths:
             if baseline_kwargs is None:
@@ -360,7 +406,7 @@ class Interferometer:
         if source is not None:
             t = np.arange(T) * self.time_step
             att = source(t)
-            attitude[:, :att.shape[1]] = att
+            attitude[:, : att.shape[1]] = att
             provides_roll = source.provides_roll
         if self.roller is not None and not provides_roll:
             attitude = self.roller(self, attitude)
@@ -386,10 +432,18 @@ class Interferometer:
             idx = idx[np.isin(idx, np.asarray(baseline_ids, int))]
         return idx
 
-    def field_of_view(self, energy_kev=None, rmf=None, baseline_bounds=None,
-                      baseline_ids=None, which="imaging", combine="min",
-                      reduce="low_edge", coherence_factor=1.0,
-                      resolving_power=None):
+    def field_of_view(
+        self,
+        energy_kev=None,
+        rmf=None,
+        baseline_bounds=None,
+        baseline_ids=None,
+        which="imaging",
+        combine="min",
+        reduce="low_edge",
+        coherence_factor=1.0,
+        resolving_power=None,
+    ):
         """Field of view [rad] derived from the selected baselines' optics/detector.
 
         Applies :meth:`Baseline.field_of_view` over the selected baselines and
@@ -435,8 +489,9 @@ class Interferometer:
             energies = [float(energy_kev)]
         else:
             lo, hi = float(energy_kev[0]), float(energy_kev[1])
-            energies = {"low_edge": [lo], "high_edge": [hi],
-                        "min": [lo, hi]}.get(reduce, [lo])
+            energies = {"low_edge": [lo], "high_edge": [hi], "min": [lo, hi]}.get(
+                reduce, [lo]
+            )
 
         def R_at(E):
             if E is None:
@@ -445,15 +500,23 @@ class Interferometer:
                 return float(resolving_power(E))
             if rmf is not None:
                 from .reconstruct import resolving_power as _rp
+
                 return float(_rp(rmf, E))
             return None
 
         vals = []
         for E in energies:
             R = R_at(E)
-            per_bl = [self.baselines[int(i)].field_of_view(
-                energy_kev=E, R=R, detector=self.detector, which=which,
-                coherence_factor=coherence_factor) for i in idx]
+            per_bl = [
+                self.baselines[int(i)].field_of_view(
+                    energy_kev=E,
+                    R=R,
+                    detector=self.detector,
+                    which=which,
+                    coherence_factor=coherence_factor,
+                )
+                for i in idx
+            ]
             combined = min(per_bl) if combine == "min" else max(per_bl)
             vals.append(combined)
         # over the evaluated energies, take the tightest (min) as the safe FoV
@@ -466,5 +529,6 @@ class Interferometer:
         idx = self._selected_baseline_indices(baseline_bounds, baseline_ids)
         for i in idx:
             fovs[i] = self.baselines[int(i)].field_of_view(
-                which="detection", detector=self.detector)
+                which="detection", detector=self.detector
+            )
         return fovs

@@ -11,6 +11,13 @@ stares at the nominal pointing. To point at a given sky position use
 :func:`xrisalis.coords.sky_offset_deg`. ``roll`` is the rotation about the boresight that the aperture
 sweeps to build uv coverage.
 
+Both are **tangent-plane offsets** [rad] from the observation's nominal
+pointing ``(ra_pnt, dec_pnt)`` (set in
+:func:`xrisalis.simulate.generate_photons`; see :mod:`xrisalis.coords`):
+``pitch`` towards North, ``yaw`` towards East, true angles on the sky (no
+``cos(dec)`` factor needed). ``(0, 0)`` stares at the nominal pointing; a dither
+or drift is a small offset from it.
+
 A :class:`Pointing` supplies the **boresight** ``(pitch, yaw)`` as a function of
 time. Roll is filled in by the interferometer's ``roller`` (e.g.
 :func:`~xrisalis.instrument.smooth_roll`) *unless* the :class:`Pointing` also
@@ -30,6 +37,7 @@ Angles are given as astropy :class:`~astropy.units.Quantity` objects, or as bare
 numbers in **degrees** (the package's sky-coordinate convention); they are
 converted to radians internally.
 """
+
 from __future__ import annotations
 
 import os
@@ -64,16 +72,18 @@ class Pointing:
         """Attitude ``(T, 2 or 3)`` [rad] at time-step times ``t`` [s]."""
         t = np.atleast_1d(np.asarray(t, dtype=float))
         arr = np.asarray(self._func(t), dtype=float)
-        if arr.ndim == 1:                      # a single (2,)/(3,) triple
+        if arr.ndim == 1:  # a single (2,)/(3,) triple
             arr = np.tile(arr.reshape(1, -1), (t.size, 1))
         if arr.shape[0] != t.size and arr.shape[1] == t.size:
-            arr = arr.T                        # accept (ncol, T) too
+            arr = arr.T  # accept (ncol, T) too
         if arr.shape[0] != t.size:
             raise ValueError(
-                f"pointing returned {arr.shape[0]} rows for {t.size} time-steps")
+                f"pointing returned {arr.shape[0]} rows for {t.size} time-steps"
+            )
         if arr.shape[1] not in (2, 3):
-            raise ValueError("pointing must yield 2 (pitch,yaw) or 3 "
-                             "(pitch,yaw,roll) columns")
+            raise ValueError(
+                "pointing must yield 2 (pitch,yaw) or 3 (pitch,yaw,roll) columns"
+            )
         if self.provides_roll and arr.shape[1] != 3:
             raise ValueError("provides_roll=True but no roll column produced")
         return arr
@@ -98,14 +108,18 @@ def constant_pointing(pitch=0.0, yaw=0.0, roll=None):
     """
     p, y = to_rad(pitch), to_rad(yaw)
     if roll is None:
+
         def f(t):
             return np.column_stack([np.full(t.shape, p), np.full(t.shape, y)])
+
         return Pointing(f, provides_roll=False, label="constant")
     r = to_rad(roll)
 
     def f(t):
-        return np.column_stack([np.full(t.shape, p), np.full(t.shape, y),
-                                np.full(t.shape, r)])
+        return np.column_stack(
+            [np.full(t.shape, p), np.full(t.shape, y), np.full(t.shape, r)]
+        )
+
     return Pointing(f, provides_roll=True, label="constant")
 
 
@@ -136,9 +150,9 @@ def pointing_from_function(func, degrees=True, provides_roll=None):
                 arr = arr.T
         return arr * conv
 
-    if provides_roll is None:                  # probe the output width
+    if provides_roll is None:  # probe the output width
         probe = f(np.zeros(1))
-        provides_roll = (probe.shape[1] == 3)
+        provides_roll = probe.shape[1] == 3
     return Pointing(f, provides_roll=provides_roll, label="function")
 
 
@@ -148,6 +162,7 @@ def _read_pointing_table(path):
     low = path.lower()
     if low.endswith((".fits", ".fit", ".fits.gz", ".fit.gz")):
         from astropy.io import fits
+
         with fits.open(path) as hdul:
             hdu = None
             for name in ("POINTING", "ATTITUDE"):
@@ -155,23 +170,27 @@ def _read_pointing_table(path):
                     hdu = hdul[name]
                     break
             if hdu is None:
-                hdu = next(h for h in hdul
-                           if getattr(h, "data", None) is not None
-                           and hasattr(h, "columns"))
+                hdu = next(
+                    h
+                    for h in hdul
+                    if getattr(h, "data", None) is not None and hasattr(h, "columns")
+                )
             data = hdu.data
-            cols = {c.upper(): np.asarray(data[c], dtype=float)
-                    for c in data.columns.names}
-            units = {c.upper(): (data.columns[c].unit or "")
-                     for c in data.columns.names}
+            cols = {
+                c.upper(): np.asarray(data[c], dtype=float) for c in data.columns.names
+            }
+            units = {
+                c.upper(): (data.columns[c].unit or "") for c in data.columns.names
+            }
         return cols, units
     # text / CSV
     delim = "," if low.endswith(".csv") else None
     arr = np.genfromtxt(path, names=True, delimiter=delim, dtype=float)
     if arr.dtype.names is not None:
         cols = {n.upper(): np.asarray(arr[n], dtype=float) for n in arr.dtype.names}
-    else:                                       # headerless -> positional columns
+    else:  # headerless -> positional columns
         raw = np.atleast_2d(np.genfromtxt(path, delimiter=delim, dtype=float))
-        names = ["TIME", "PITCH", "YAW", "ROLL"][:raw.shape[1]]
+        names = ["TIME", "PITCH", "YAW", "ROLL"][: raw.shape[1]]
         cols = {n: raw[:, i] for i, n in enumerate(names)}
     return cols, {}
 
@@ -181,8 +200,9 @@ def _pick(cols, names, required=True):
         if n in cols:
             return n
     if required:
-        raise ValueError(f"pointing table is missing one of columns {names}; "
-                         f"found {list(cols)}")
+        raise ValueError(
+            f"pointing table is missing one of columns {names}; found {list(cols)}"
+        )
     return None
 
 
@@ -200,7 +220,7 @@ def pointing_from_file(path, degrees=True):
       roller).
 
     Angles are interpreted in **degrees** by default. For a FITS table, a column
-    ``TUNIT`` of ``rad``/``radian`` is honoured automatically. Times outside the
+    ``TUNIT`` of ``rad``/``radian`` is honored automatically. Times outside the
     tabulated range are clamped to the first/last sample.
     """
     cols, units = _read_pointing_table(path)
@@ -215,8 +235,11 @@ def pointing_from_file(path, degrees=True):
 
     def _conv(key):
         unit = str(units.get(key, "")).lower()
-        c = 1.0 if unit in ("rad", "radian", "radians") else \
-            (np.pi / 180.0 if degrees else 1.0)
+        c = (
+            1.0
+            if unit in ("rad", "radian", "radians")
+            else (np.pi / 180.0 if degrees else 1.0)
+        )
         return cols[key][order] * c
 
     pitch, yaw = _conv(pkey), _conv(ykey)
@@ -250,8 +273,9 @@ def as_pointing(spec):
         return pointing_from_function(spec)
     arr = np.ravel(np.asarray(spec, dtype=float))
     if arr.size not in (2, 3):
-        raise ValueError("constant pointing must have 2 (pitch,yaw) or 3 "
-                         "(pitch,yaw,roll) values")
+        raise ValueError(
+            "constant pointing must have 2 (pitch,yaw) or 3 (pitch,yaw,roll) values"
+        )
     return constant_pointing(*arr)
 
 
